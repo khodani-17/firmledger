@@ -1,0 +1,576 @@
+﻿der-right: 1px solid var(--border);
+  overflow-y: auto;
+}
+
+.brand {
+  font-size: 22px;
+  font-weight: 800;
+  padding: 0 10px 28px;
+  color: #ffffff;
+}
+
+.brand span {
+  color: #60a5fa;
+}
+
+.nav-link {
+  display: block;
+  padding: 10px 12px;
+  border-radius: 8px;
+  color: #aebfcd;
+  margin: 3px 0;
+  font-size: 14px;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.nav-link:hover {
+  background: #0d2a42;
+  color: #ffffff;
+}
+
+.nav-link.active {
+  background: #123957;
+  color: #ffffff;
+}
+
+.main {
+  margin-left: 250px;
+  width: calc(100% - 250px);
+  min-height: 100vh;
+  background: var(--bg);
+}
+
+.topbar {
+  height: 72px;
+  background: #081d30;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 32px;
+}
+
+.content {
+  padding: 32px;
+  max-width: 1500px;
+}
+
+.page-title {
+  font-size: 28px;
+  font-weight: 750;
+  margin: 0;
+  color: #ffffff;
+}
+
+.page-subtitle {
+  color: var(--muted);
+  margin-top: 6px;
+}
+
+/* =========================================================
+   Grid
+   ========================================================= */
+
+.grid {
+  display: grid;
+  gap: 18px;
+}
+
+.grid-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.grid-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+/* =========================================================
+   Cards
+   ========================================================= */
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+.card:hover {
+  border-color: var(--border-light);
+}
+
+.metric-label {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.metric-value {
+  font-size: 28px;
+  font-weight: 750;
+  margin-top: 8px;
+  color: #ffffff;
+}
+
+.section-title {
+  font-size: 17px;
+  font-weight: 700;
+  margin-bottom: 16px;
+  color: #ffffff;
+}
+
+/* =========================================================
+   Quick Actions
+   ========================================================= */
+
+.action-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+.action {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 10px;
+  padding: 16px;
+  color: #ffffff;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    transform 0.15s ease;
+}
+
+.action:hover {
+  border-color: #315875;
+  background: var(--surface-2);
+  transform: translateY(-1px);
+}
+
+/* =========================================================
+   Tables
+   ========================================================= */
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--surface);
+}
+
+.table th,
+.table td {
+  text-align: left;
+  padding: 13px 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+
+.table th {
+  color: var(--muted);
+  font-weight: 600;
+  background: #091e31;
+}
+
+.table td {
+  color: #dce6ed;
+}
+
+.table tr:hover td {
+  background: #0d2941;
+}
+
+/* =========================================================
+   Badges
+   ========================================================= */
+
+.badge {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 4px 9px;
+  font-size: 12px;
+  background: #123957;
+  color: #93c5fd;
+}
+
+/* =========================================================
+   Buttons
+   ========================================================= */
+
+.primary-button {
+  border: 0;
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--accent);
+  color: #ffffff;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    transform 0.15s ease;
+}
+
+.primary-button:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.primary-button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.primary-button:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.logout-button {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted-light);
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.logout-button:hover {
+  background: var(--surface-hover);
+  color: #ffffff;
+}
+
+/* =========================================================
+   Forms
+   ========================================================= */
+
+.form-card {
+  max-width: 720px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+}
+
+.form-card form {
+  display: grid;
+  gap: 16px;
+}
+
+.form-card label {
+  display: grid;
+  gap: 7px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #dce6ed;
+}
+
+.form-card input,
+.form-card select,
+.form-card textarea {
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  padding: 11px 12px;
+  background: #071b2c;
+  color: #ffffff;
+  font-family: inherit;
+}
+
+.form-card input::placeholder,
+.form-card textarea::placeholder {
+  color: #71879a;
+}
+
+.form-card input:focus,
+.form-card select:focus,
+.form-card textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.form-card select,
+.form-card input {
+  width: 100%;
+}
+
+.page-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+/* =========================================================
+   Errors
+   ========================================================= */
+
+.form-error {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(127, 29, 29, 0.35);
+  border: 1px solid rgba(248, 113, 113, 0.35);
+  color: #fca5a5;
+  font-size: 13px;
+}
+
+/* =========================================================
+   FirmLedger Authentication
+   Login + Signup
+   ========================================================= */
+
+.login-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--bg-deep);
+}
+
+.login-card {
+  width: min(430px, 100%);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 34px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.35);
+}
+
+.login-brand {
+  color: #ffffff;
+  padding: 0 0 22px;
+}
+
+.login-card h1 {
+  margin: 0;
+  font-size: 28px;
+  color: #ffffff;
+}
+
+.login-form {
+  display: grid;
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.login-form label {
+  display: grid;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #dce6ed;
+}
+
+.login-form input {
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  padding: 11px 12px;
+  outline: none;
+  background: #071b2c;
+  color: #ffffff;
+}
+
+.login-form input::placeholder {
+  color: #71879a;
+}
+
+.login-form input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+/* =========================================================
+   Authentication Pages
+   ========================================================= */
+
+.auth-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 20px;
+  background:
+    radial-gradient(
+      circle at top right,
+      #123957 0,
+      transparent 32%
+    ),
+    var(--bg-deep);
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 460px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 42px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.4);
+}
+
+.auth-brand {
+  margin-bottom: 28px;
+  padding: 0;
+  font-size: 28px;
+  font-weight: 800;
+  color: #ffffff;
+}
+
+.auth-brand span {
+  color: #60a5fa;
+}
+
+.auth-card h1 {
+  margin: 0;
+  color: #ffffff;
+  font-size: 30px;
+  line-height: 1.2;
+}
+
+.auth-subtitle {
+  margin: 10px 0 28px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.auth-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  color: #dce6ed;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.auth-form input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px 14px;
+  border: 1px solid var(--border-light);
+  border-radius: 9px;
+  background: #071b2c;
+  color: #ffffff;
+  font-size: 15px;
+  outline: none;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.auth-form input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.auth-form input::placeholder {
+  color: #71879a;
+}
+
+.auth-form .primary-button {
+  width: 100%;
+  margin-top: 4px;
+  padding: 13px 16px;
+  border: 0;
+  border-radius: 9px;
+  background: var(--accent);
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.auth-form .primary-button:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.auth-form .primary-button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.auth-form .primary-button:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.auth-form .form-error {
+  padding: 11px 13px;
+  border: 1px solid rgba(248, 113, 113, 0.35);
+  border-radius: 8px;
+  background: rgba(127, 29, 29, 0.35);
+  color: #fca5a5;
+  font-size: 14px;
+}
+
+.auth-footer {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  text-align: center;
+  font-size: 14px;
+}
+
+.auth-footer a {
+  color: #60a5fa;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.auth-footer a:hover {
+  text-decoration: underline;
+}
+
+/* =========================================================
+   Financial Status Colours
+   ========================================================= */
+
+.text-success {
+  color: var(--success);
+}
+
+.text-warning {
+  color: var(--warning);
+}
+
+.text-danger {
+  color: var(--danger);
+}
+
+/* =========================================================
+   Responsive Layout
+   ========================================================= */
+
+@media (max-width: 1000px) {
+  .sidebar {
+    width: 210px;
+  }
+
+  .main {
+    margin-left: 210px;
+    width: calc(100% - 210px);
+  }
+
+  .grid-4,
+  .action-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 700px) {
+  .sidebar {
+    display: none;
+  }
+
+  .main {
+    margin: 0;
+    width: 100%;
+  }
+
+  .grid-4,
+  .grid-2,
+

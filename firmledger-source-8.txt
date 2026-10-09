@@ -1,0 +1,299 @@
+﻿.matter.findMany({where:{firmId:u.firmId,status:{not:"ARCHIVED"}},include:{client:true},orderBy:{matterNumber:"desc"}})]);const sp=await searchParams;return <div className="shell"><aside className="sidebar"><div className="brand">Firm<span>Ledger</span></div><Link className="nav-link" href="/trust">â† Trust accounting</Link></aside><main className="main"><section className="content"><h1 className="page-title">Trust accounting</h1><div className="grid grid-2" style={{marginTop:24}}><form action={createTrustAccount} className="card form-grid"><div className="section-title">New trust bank account</div><label>Name<input name="name" required/></label><label>Bank<input name="bankName"/></label><label>Account number<input name="accountNumber"/></label><button className="primary-button" type="submit">Create trust account</button></form><form action={createTrustTransaction} className="card form-grid"><div className="section-title">Record client-money transaction</div><label>Trust account<select name="trustAccountId" required>{accounts.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select></label><label>Client<select name="clientId" required><option value="">Select client</option>{clients.map(c=><option key={c.id} value={c.id}>{c.displayName}</option>)}</select></label><label>Matter<select name="matterId"><option value="">No matter</option>{matters.map(m=><option key={m.id} value={m.id}>{m.matterNumber} Â· {m.client.displayName}</option>)}</select></label><label>Type<select name="type"><option value="RECEIPT">Receipt</option><option value="PAYMENT">Payment</option><option value="TRANSFER">Transfer</option><option value="INTEREST">Interest</option><option value="FEE">Fee</option><option value="REVERSAL">Reversal</option></select></label><label>Amount<input name="amount" type="number" min="0.01" step="0.01" required/></label><label>Reference<input name="reference"/></label><label>Description<input name="description" required/></label><button className="primary-button" type="submit">Post transaction</button></form></div></section></main></div>}
+
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\src\lib\audit.ts
+============================================================
+import { prisma } from "@/lib/prisma";
+
+export async function audit(input: {
+  firmId: string; userId?: string; action: string; entity: string; entityId?: string; metadata?: unknown;
+}) {
+  await prisma.auditLog.create({ data: {
+    firmId: input.firmId,
+    userId: input.userId,
+    action: input.action,
+    entity: input.entity,
+    entityId: input.entityId,
+    metadata: input.metadata as any
+  }});
+}
+
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\src\lib\auth.ts
+============================================================
+import { cookies } from "next/headers";
+import {
+  createHmac,
+  randomBytes,
+  pbkdf2 as pbkdf2Callback,
+  timingSafeEqual,
+} from "node:crypto";
+import { promisify } from "node:util";
+import { prisma } from "@/lib/prisma";
+
+const pbkdf2 = promisify(pbkdf2Callback);
+
+export const SESSION_COOKIE = "firmledger_session";
+export const SESSION_TTL_SECONDS = 60 * 60 * 8;
+
+function getAuthSecret() {
+  const value = process.env.AUTH_SECRET;
+
+  if (!value) {
+    throw new Error("AUTH_SECRET is not configured.");
+  }
+
+  return value;
+}
+
+export async function hashPassword(password: string) {
+  const salt = randomBytes(16).toString("hex");
+
+  const derived = await pbkdf2(
+    password,
+    salt,
+    120_000,
+    64,
+    "sha512"
+  );
+
+  return `pbkdf2$120000$${salt}$${derived.toString("hex")}`;
+}
+
+export async function verifyPassword(
+  password: string,
+  stored: string
+) {
+  try {
+    const [algorithm, iterationsText, salt, expected] =
+      stored.split("$");
+
+    if (
+      algorithm !== "pbkdf2" ||
+      !iterationsText ||
+      !salt ||
+      !expected
+    ) {
+      return false;
+    }
+
+    const iterations = Number(iterationsText);
+
+    if (!Number.isInteger(iterations) || iterations <= 0) {
+      return false;
+    }
+
+    const derived = await pbkdf2(
+      password,
+      salt,
+      iterations,
+      64,
+      "sha512"
+    );
+
+    const expectedBuffer = Buffer.from(expected, "hex");
+
+    if (derived.length !== expectedBuffer.length) {
+      return false;
+    }
+
+    return timingSafeEqual(derived, expectedBuffer);
+  } catch {
+    return false;
+  }
+}
+
+function sign(value: string) {
+  return createHmac(
+    "sha256",
+    getAuthSecret()
+  )
+    .update(value)
+    .digest("hex");
+}
+
+export function makeSession(userId: string) {
+  const expires =
+    Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS;
+
+  const payload = `${userId}.${expires}`;
+  const signature = sign(payload);
+
+  return `${payload}.${signature}`;
+}
+
+export function parseSession(value: string | undefined) {
+  if (!value) {
+    return null;
+  }
+
+  const parts = value.split(".");
+
+  if (parts.length !== 3) {
+    return null;
+  }
+
+  const [userId, expiresText, signature] = parts;
+
+  if (!userId || !expiresText || !signature) {
+    return null;
+  }
+
+  const payload = `${userId}.${expiresText}`;
+
+  let expectedSignature: string;
+
+  try {
+    expectedSignature = sign(payload);
+  } catch {
+    return null;
+  }
+
+  const actualBuffer = Buffer.from(signature, "hex");
+  const expectedBuffer = Buffer.from(expectedSignature, "hex");
+
+  if (
+    actualBuffer.length !== expectedBuffer.length ||
+    !timingSafeEqual(actualBuffer, expectedBuffer)
+  ) {
+    return null;
+  }
+
+  const expires = Number(expiresText);
+
+  if (!Number.isFinite(expires)) {
+    return null;
+  }
+
+  if (expires < Math.floor(Date.now() / 1000)) {
+    return null;
+  }
+
+  return {
+    userId,
+  };
+}
+
+export async function getCurrentUser() {
+  const cookieStore = await cookies();
+
+  const sessionCookie =
+    cookieStore.get(SESSION_COOKIE)?.value;
+
+  const session = parseSession(sessionCookie);
+
+  if (!session) {
+    return null;
+  }
+
+  return prisma.firmUser.findUnique({
+    where: {
+      id: session.userId,
+    },
+    include: {
+      firm: true,
+    },
+  });
+}
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\src\lib\permissions.ts
+============================================================
+import { Role } from "@/generated/prisma/client";
+import { getCurrentUser } from "@/lib/auth";
+import { redirect } from "next/navigation";
+
+export async function requireUser() {
+  const user = await getCurrentUser();
+  if (!user || !user.active) redirect("/login");
+  return user;
+}
+
+export async function requireRole(roles: Role[]) {
+  const user = await requireUser();
+  if (!roles.includes(user.role)) redirect("/");
+  return user;
+}
+
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\src\lib\posting.ts
+============================================================
+import { Prisma } from "@/generated/prisma/client";
+type Db = Prisma.TransactionClient;
+async function account(db: Db, firmId: string, code: string) {
+  const result = await db.ledgerAccount.findFirst({ where: { firmId, code, active: true } });
+  if (!result) throw new Error(`Ledger account ${code} is not configured for this firm.`);
+  return result;
+}
+function assertBalanced(lines: { debit: number; credit: number }[]) {
+  const debit = Math.round(lines.reduce((s,l)=>s+l.debit,0)*100);
+  const credit = Math.round(lines.reduce((s,l)=>s+l.credit,0)*100);
+  if (debit !== credit) throw new Error("Journal entry is not balanced.");
+}
+async function entry(db: Db, args: {firmId:string;date:Date;description:string;sourceType:string;sourceId:string;lines:{ledgerAccountId:string;debit:number;credit:number;description?:string}[]}) {
+  assertBalanced(args.lines);
+  return db.journalEntry.create({data:{firmId:args.firmId,entryDate:args.date,description:args.description,sourceType:args.sourceType,sourceId:args.sourceId,lines:{create:args.lines}}});
+}
+export async function postInvoice(db: Db, a:{firmId:string;invoiceId:string;invoiceNumber:string;entryDate:Date;subtotal:number;taxAmount:number}) {
+  const ar=await account(db,a.firmId,"1100"), revenue=await account(db,a.firmId,"4000"), vat=await account(db,a.firmId,"2000");
+  return entry(db,{firmId:a.firmId,date:a.entryDate,description:`Invoice ${a.invoiceNumber}`,sourceType:"INVOICE",sourceId:a.invoiceId,lines:[{ledgerAccountId:ar.id,debit:a.subtotal+a.taxAmount,credit:0,description:a.invoiceNumber},{ledgerAccountId:revenue.id,debit:0,credit:a.subtotal,description:a.invoiceNumber},...(a.taxAmount? [{ledgerAccountId:vat.id,debit:0,credit:a.taxAmount,description:a.invoiceNumber}]:[])]});
+}
+export async function postPayment(db: Db, a:{firmId:string;paymentId:string;reference:string;entryDate:Date;amount:number}) {
+  const bank=await account(db,a.firmId,"1000"), ar=await account(db,a.firmId,"1100");
+  return entry(db,{firmId:a.firmId,date:a.entryDate,description:`Payment ${a.reference}`,sourceType:"PAYMENT",sourceId:a.paymentId,lines:[{ledgerAccountId:bank.id,debit:a.amount,credit:0,description:a.reference},{ledgerAccountId:ar.id,debit:0,credit:a.amount,description:a.reference}]});
+}
+export async function postExpense(db: Db, a:{firmId:string;expenseId:string;description:string;entryDate:Date;netAmount:number;taxAmount:number}) {
+  const expense=await account(db,a.firmId,"5000"), vat=await account(db,a.firmId,"2100"), bank=await account(db,a.firmId,"1000");
+  return entry(db,{firmId:a.firmId,date:a.entryDate,description:`Expense ${a.description}`,sourceType:"EXPENSE",sourceId:a.expenseId,lines:[{ledgerAccountId:expense.id,debit:a.netAmount,credit:0,description:a.description},...(a.taxAmount?[{ledgerAccountId:vat.id,debit:a.taxAmount,credit:0,description:`Input VAT - ${a.description}`}]:[]),{ledgerAccountId:bank.id,debit:0,credit:a.netAmount+a.taxAmount,description:a.description}]});
+}
+export async function postPurchaseInvoice(db: Db, a:{firmId:string;id:string;description:string;date:Date;net:number;tax:number}) {
+  const expense=await account(db,a.firmId,"5000"), vat=await account(db,a.firmId,"2100"), ap=await account(db,a.firmId,"2200");
+  return entry(db,{firmId:a.firmId,date:a.date,description:`Purchase invoice ${a.description}`,sourceType:"PURCHASE_INVOICE",sourceId:a.id,lines:[{ledgerAccountId:expense.id,debit:a.net,credit:0,description:a.description},...(a.tax?[{ledgerAccountId:vat.id,debit:a.tax,credit:0,description:`Input VAT - ${a.description}`}]:[]),{ledgerAccountId:ap.id,debit:0,credit:a.net+a.tax,description:a.description}]});
+}
+export async function postSupplierPayment(db: Db, a:{firmId:string;id:string;reference:string;date:Date;amount:number}) {
+  const ap=await account(db,a.firmId,"2200"), bank=await account(db,a.firmId,"1000");
+  return entry(db,{firmId:a.firmId,date:a.date,description:`Supplier payment ${a.reference}`,sourceType:"SUPPLIER_PAYMENT",sourceId:a.id,lines:[{ledgerAccountId:ap.id,debit:a.amount,credit:0,description:a.reference},{ledgerAccountId:bank.id,debit:0,credit:a.amount,description:a.reference}]});
+}
+
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\src\lib\prisma.ts
+============================================================
+import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaClient } from "@/generated/prisma/client";
+
+const globalForPrisma = globalThis as unknown as {
+  prisma: PrismaClient | undefined;
+};
+
+const connectionString = process.env.DATABASE_URL;
+
+if (!connectionString) {
+  throw new Error("DATABASE_URL is not defined.");
+}
+
+const adapter = new PrismaPg({
+  connectionString,
+});
+
+export const prisma =
+  globalForPrisma.prisma ??
+  new PrismaClient({
+    adapter,
+  });
+
+if (process.env.NODE_ENV !== "production") {
+  globalForPrisma.prisma = prisma;
+}
+
+export default prisma;
+
+

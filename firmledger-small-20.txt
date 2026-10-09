@@ -1,0 +1,302 @@
+﻿  R{revenue.toFixed(2)}
+              </div>
+            </div>
+
+            <div className="card">
+              <div className="metric-label">Operating expenses</div>
+              <div className="metric-value">
+                R{operatingExpenses.toFixed(2)}
+              </div>
+            </div>
+
+            <div className="card">
+              <div className="metric-label">Net result</div>
+              <div className="metric-value">
+                R{(revenue - operatingExpenses).toFixed(2)}
+              </div>
+            </div>
+
+            <div className="card">
+              <div className="metric-label">Accounts receivable</div>
+              <div className="metric-value">
+                R{receivables.toFixed(2)}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-2" style={{ marginTop: 24 }}>
+            <div className="card">
+              <div className="section-title">Cash receipts</div>
+
+              <p className="page-subtitle">
+                Completed client payments recorded in FirmLedger.
+              </p>
+
+              <div className="metric-value">
+                R{receipts.toFixed(2)}
+              </div>
+            </div>
+
+            <div className="card">
+              <div className="section-title">
+                Expense cash outflow
+              </div>
+
+              <p className="page-subtitle">
+                Recorded paid expenses including input VAT.
+              </p>
+
+              <div className="metric-value">
+                R{expensesTotal.toFixed(2)}
+              </div>
+            </div>
+          </div>
+
+          <div className="card" style={{ marginTop: 24 }}>
+            <div className="section-title">Trial balance</div>
+
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Account</th>
+                  <th>Type</th>
+                  <th>Debit</th>
+                  <th>Credit</th>
+                  <th>Balance</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {[...accountTotals.values()]
+                  .sort((a, b) =>
+                    a.name.localeCompare(b.name)
+                  )
+                  .map((a) => {
+                    const balance = a.debit - a.credit;
+
+                    return (
+                      <tr key={a.name}>
+                        <td>{a.name}</td>
+
+                        <td>{a.type}</td>
+
+                        <td>
+                          R{a.debit.toFixed(2)}
+                        </td>
+
+                        <td>
+                          R{a.credit.toFixed(2)}
+                        </td>
+
+                        <td>
+                          R{Math.abs(balance).toFixed(2)}{" "}
+                          {balance >= 0 ? "Dr" : "Cr"}
+                        </td>
+                      </tr>
+                    );
+                  })}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+  );
+}
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\src\app\settings\page.tsx
+============================================================
+import Link from "next/link"; import {requireUser} from "@/lib/permissions";
+export default async function Page(){const u=await requireUser(); return <div className="shell"><aside className="sidebar"><div className="brand">Firm<span>Ledger</span></div><Link className="nav-link" href="/">â† Dashboard</Link><Link className="nav-link active" href="/settings">Settings</Link></aside><main className="main"><header className="topbar"><strong>{u.firm.name}</strong></header><section className="content"><h1 className="page-title">Settings</h1><p className="page-subtitle">This module is part of the FirmLedger foundation and will be implemented in the next accounting workflow phase.</p><div className="card" style={{marginTop:24}}><strong>Module foundation ready</strong><p className="page-subtitle">Tenant security and role checks are already applied before this area can be used.</p></div></section></main></div>}
+
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\src\app\signup\page.tsx
+============================================================
+"use client";
+
+import Link from "next/link";
+import { FormEvent, useState } from "react";
+import { useRouter } from "next/navigation";
+
+export default function SignupPage() {
+  const router = useRouter();
+
+  const [firmName, setFirmName] = useState("");
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+
+    const form = new FormData(event.currentTarget);
+
+    const firm = String(form.get("firmName") || "").trim();
+    const fullName = String(form.get("name") || "").trim();
+    const userEmail = String(form.get("email") || "").trim();
+    const userPassword = String(form.get("password") || "");
+    const userConfirmPassword = String(
+      form.get("confirmPassword") || ""
+    );
+
+    if (
+      !firm ||
+      !fullName ||
+      !userEmail ||
+      !userPassword ||
+      !userConfirmPassword
+    ) {
+      setError("Please complete all required fields.");
+      return;
+    }
+
+    if (userPassword !== userConfirmPassword) {
+      setError("Passwords do not match.");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const response = await fetch("/api/auth/signup", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          firmName: firm,
+          name: fullName,
+          email: userEmail,
+          password: userPassword,
+          confirmPassword: userConfirmPassword,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(data.error || "Unable to create account.");
+        setLoading(false);
+        return;
+      }
+
+      router.replace("/");
+      router.refresh();
+    } catch (error) {
+      console.error(error);
+      setError("Unable to create account. Please try again.");
+      setLoading(false);
+    }
+  }
+
+  return (
+    <main className="auth-page">
+      <div className="auth-card">
+        <div className="auth-brand">
+          Firm<span>Ledger</span>
+        </div>
+
+        <h1>Create your account</h1>
+
+        <p className="auth-subtitle">
+          Set up your law firm&apos;s financial workspace.
+        </p>
+
+        <form onSubmit={submit} className="auth-form">
+          <label htmlFor="signup-firm">
+            Firm name
+            <input
+              id="signup-firm"
+              name="firmName"
+              type="text"
+              placeholder="Maphorogo Attorneys"
+              autoComplete="organization"
+              required
+            />
+          </label>
+
+          <label htmlFor="signup-name">
+            Your name
+            <input
+              id="signup-name"
+              name="name"
+              type="text"
+              placeholder="Khodani Maphorogo"
+              autoComplete="name"
+              required
+            />
+          </label>
+
+          <label htmlFor="signup-email">
+            Email
+            <input
+              id="signup-email"
+              name="email"
+              type="email"
+              placeholder="you@example.com"
+              autoComplete="email"
+              required
+            />
+          </label>
+
+          <label htmlFor="signup-password">
+            Password
+            <input
+              id="signup-password"
+              name="password"
+              type="password"
+              placeholder="Create a password"
+              autoComplete="new-password"
+              minLength={8}
+              required
+            />
+          </label>
+
+          <label htmlFor="signup-confirm-password">
+            Confirm password
+            <input
+              id="signup-confirm-password"
+              name="confirmPassword"
+              type="password"
+              placeholder="Re-enter your password"
+              autoComplete="new-password"
+              minLength={8}
+              required
+            />
+          </label>
+
+          {error && <div className="form-error">{error}</div>}
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="primary-button"
+          >
+            {loading ? "Creating account..." : "Create account"}
+          </button>
+        </form>
+
+        <div className="auth-footer">
+          Already have an account?{" "}
+          <Link href="/login">Sign in</Link>
+        </div>
+      </div>
+    </main>
+  );
+}
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\src\app\suppliers\page.tsx
+============================================================
+import Link from "next/link"; import {requireRole} from "@/lib/permissions"; import {prisma} from "@/lib/prisma";
+export default async function Suppliers(){const u=await requireRole(["OWNER","ADMIN","FINANCE","ACCOUNTANT"]);const rows=await prisma.supplier.findMany({where:{firmId:u.firmId},orderBy:{name:"asc"}});return <Shell title="Suppliers" action={<Link className="primary-button" href="/suppliers/new">New supplier</Link>}><div className="card"><table className="table"><thead><tr><th>Code</th><th>Supplier</th><th>VAT number</th><th>Email</th><th>Status</th></tr></thead><tbody>{rows.map(s=><tr key={s.id}><td>{s.supplierCode}

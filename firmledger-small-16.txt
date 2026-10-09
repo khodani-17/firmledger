@@ -1,0 +1,155 @@
+﻿ink className="nav-link" href="/billing">Billing</Link></aside><main className="main"><header className="topbar"><strong>Client management</strong></header><section className="content"><div className="page-heading"><div><h1 className="page-title">{title}</h1><p className="page-subtitle">{subtitle}</p></div>{action}</div><div style={{marginTop:24}}>{children}</div></section></main></div>}
+
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\src\app\clients\new\page.tsx
+============================================================
+import { createClient } from "@/app/actions";
+import { requireRole } from "@/lib/permissions";
+
+export default async function NewClient() {
+  await requireRole(["OWNER", "ADMIN", "FINANCE", "LAWYER", "STAFF"]);
+  return <Form title="New client" action={createClient} fields={[
+    ["displayName","Client name","text"],["email","Email","email"],["phone","Phone","tel"]
+  ]} select />;
+}
+function Form({title,action,fields,select}:{title:string;action:(d:FormData)=>Promise<void>;fields:string[][];select:boolean}) { return <div className="shell"><aside className="sidebar"><div className="brand">Firm<span>Ledger</span></div><a className="nav-link" href="/clients">â† Clients</a></aside><main className="main"><header className="topbar"><strong>Client management</strong></header><section className="content"><h1 className="page-title">{title}</h1><p className="page-subtitle">Capture only the information the firm needs.</p><div className="card form-card"><form action={action}>{fields.map(([n,l,t])=><label key={n}>{l}<input name={n} type={t} required={n==='displayName'}/></label>)}{select&&<label>Client type<select name="type" defaultValue="INDIVIDUAL"><option value="INDIVIDUAL">Individual</option><option value="COMPANY">Company</option><option value="TRUST">Trust</option><option value="OTHER">Other</option></select></label>}<button className="primary-button">Create client</button></form></div></section></main></div> }
+
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\src\app\credit-notes\page.tsx
+============================================================
+import Link from "next/link";
+import { requireRole } from "@/lib/permissions";
+import { prisma } from "@/lib/prisma";
+
+export default async function CreditNotes() {
+  const u = await requireRole([
+    "OWNER",
+    "ADMIN",
+    "FINANCE",
+    "ACCOUNTANT",
+  ]);
+
+  const rows = await prisma.creditNote.findMany({
+    where: {
+      firmId: u.firmId,
+    },
+    include: {
+      client: true,
+    },
+    orderBy: {
+      issueDate: "desc",
+    },
+  });
+
+  return (
+    <div className="shell">
+      <aside className="sidebar">
+        <div className="brand">
+          Firm<span>Ledger</span>
+        </div>
+
+        <Link className="nav-link" href="/">
+          â† Dashboard
+        </Link>
+
+        <Link className="nav-link active" href="/credit-notes">
+          Credit notes
+        </Link>
+
+        <Link className="nav-link" href="/billing">
+          Billing
+        </Link>
+      </aside>
+
+      <main className="main">
+        <section className="content">
+          <div className="page-heading">
+            <div>
+              <h1 className="page-title">Credit notes</h1>
+              <p className="page-subtitle">
+                Credit and adjust client invoices with an auditable record.
+              </p>
+            </div>
+
+            <Link className="primary-button" href="/credit-notes/new">
+              New credit note
+            </Link>
+          </div>
+
+          <div className="card" style={{ marginTop: 24 }}>
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Credit note</th>
+                  <th>Client</th>
+                  <th>Date</th>
+                  <th>Reason</th>
+                  <th>Total</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {rows.map((row) => (
+                  <tr key={row.id}>
+                    <td>{row.creditNumber}</td>
+
+                    <td>{row.client?.displayName ?? "â€”"}</td>
+
+                    <td>
+                      {row.issueDate.toLocaleDateString("en-ZA")}
+                    </td>
+
+                    <td>{row.reason}</td>
+
+                    <td>R{Number(row.total).toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+  );
+}
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\src\app\credit-notes\new\page.tsx
+============================================================
+import Link from "next/link"; import {createCreditNote} from "@/app/actions"; import {requireRole} from "@/lib/permissions"; import {prisma} from "@/lib/prisma";
+export default async function NewCredit(){const u=await requireRole(["OWNER","ADMIN","FINANCE","ACCOUNTANT"]);const [clients,invoices]=await Promise.all([prisma.client.findMany({where:{firmId:u.firmId,active:true},orderBy:{displayName:"asc"}}),prisma.invoice.findMany({where:{firmId:u.firmId,status:{not:"VOID"}},include:{client:true},orderBy:{issueDate:"desc"},take:200})]);return <div className="shell"><aside className="sidebar"><div className="brand">Firm<span>Ledger</span></div><Link className="nav-link" href="/credit-notes">â† Credit notes</Link></aside><main className="main"><section className="content"><h1 className="page-title">New credit note</h1><form action={createCreditNote} className="card form-grid"><label>Client<select name="clientId" required><option value="">Select client</option>{clients.map(c=><option key={c.id} value={c.id}>{c.displayName}</option>)}</select></label><label>Invoice<select name="invoiceId"><option value="">No invoice</option>{invoices.map(i=><option key={i.id} value={i.id}>{i.invoiceNumber} Â· {i.client.displayName} Â· R{Number(i.balanceDue).toFixed(2)}</option>)}</select></label><label>Reason<input name="reason" required/></label><label>Subtotal<input name="subtotal" type="number" min="0.01" step="0.01" required/></label><label>VAT amount<input name="taxAmount" type="number" min="0" step="0.01" defaultValue="0"/></label><button className="primary-button">Create credit note</button></form></section></main></div>}
+
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\src\app\expenses\page.tsx
+============================================================
+import Link from "next/link"; import {requireUser} from "@/lib/permissions"; import {prisma} from "@/lib/prisma";
+export default async function Expenses(){const u=await requireUser();const rows=await prisma.expense.findMany({where:{firmId:u.firmId},include:{matter:true,client:true},orderBy:{expenseDate:"desc"}});return <Simple title="Expenses" subtitle="Firm expenses and matter-linked disbursements." action="/expenses/new" label="Record expense"><div className="card"><table className="table"><thead><tr><th>Date</th><th>Description</th><th>Matter</th><th>Status</th><th>Amount</th></tr></thead><tbody>{rows.map(e=><tr key={e.id}><td>{e.expenseDate.toLocaleDateString("en-ZA")}</td><td>{e.description}</td><td>{e.matter?.matterNumber??"â€”"}</td><td><span className="badge">{e.status}</span></td><td>R{Number(e.amount).toFixed(2)}</td></tr>)}</tbody></table></div></Simple>}
+function Simple({title,subtitle,action,label,children}:{title:string;subtitle:string;action:string;label:string;children:React.ReactNode}){return <div className="shell"><aside className="sidebar"><div className="brand">Firm<span>Ledger</span></div><Link className="nav-link" href="/">â† Dashboard</Link><Link className="nav-link active" href="/expenses">Expenses</Link></aside><main className="main"><header className="topbar"><strong>Finance workspace</strong></header><section className="content"><div className="page-heading"><div><h1 className="page-title">{title}</h1><p className="page-subtitle">{subtitle}</p></div><Link className="primary-button" href={action}>{label}</Link></div><div style={{marginTop:24}}>{children}</div></section></main></div>}
+
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\src\app\expenses\new\page.tsx
+============================================================
+import Link from "next/link";
+import { requireRole } from "@/lib/permissions";
+import { prisma } from "@/lib/prisma";
+import { createExpense } from "@/app/actions";
+
+export default async function NewExpense() {
+  const user = await requireRole(["OWNER", "ADMIN", "FINANCE", "ACCOUNTANT"]);
+  const [clients, matters, banks] = await Promise.all([
+    prisma.client.findMany({ where: { firmId: user.firmId, active: true }, orderBy: { displayName: "asc" } }),
+    prisma.matter.findMany({ where: { firmId: user.firmId, status: { not: "ARCHIVED" } }, include: { client: true }, orderBy: { matterNumber: "asc" } }),
+    prisma.bankAccount.findMany({ where: { firmId: user.firmId, active: true }, orderBy: { name: "asc" } })
+  ]);
+  return <div className="shell"><aside className="sidebar"><div className="brand">Firm<span>Ledger</span></div><Link className="nav-link" href="/expenses">â† Expenses</Link></aside><main className="main"><header className="topbar"><strong>Record expense</strong></header><section className="content"><h1 className="page-title">Record expense</h1><p className="page-subtitle">Capture a paid expense and post the bank, expense and input-VAT entries together.</p><div className="card form-card" style={{marginTop:24}}><form action={createExpense}>
+    <label>Description<input name="description" required placeholder="Court filing fee" /></label>
+    <label>Client (optional)<select name="clientId"><option value="">Firm expense</option>{clients.map(c=><option key={c.id} value={c.id}>{c.displayName} â€” {c.c

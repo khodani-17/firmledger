@@ -1,0 +1,363 @@
+﻿rifyPassword,
+  SESSION_COOKIE,
+  SESSION_TTL_SECONDS,
+} from "@/lib/auth";
+
+export async function POST(request: Request) {
+  try {
+    const body = await request.json();
+
+    const email = String(body.email || "")
+      .trim()
+      .toLowerCase();
+
+    const password = String(body.password || "");
+
+    if (!email || !password) {
+      return NextResponse.json(
+        {
+          error: "Email and password are required.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const user = await prisma.firmUser.findFirst({
+      where: {
+        email,
+        active: true,
+      },
+    });
+
+    if (!user) {
+      return NextResponse.json(
+        {
+          error: "Invalid email or password.",
+        },
+        { status: 401 }
+      );
+    }
+
+    const validPassword = await verifyPassword(
+      password,
+      user.passwordHash
+    );
+
+    if (!validPassword) {
+      return NextResponse.json(
+        {
+          error: "Invalid email or password.",
+        },
+        { status: 401 }
+      );
+    }
+
+    const response = NextResponse.json({
+      ok: true,
+    });
+
+    response.cookies.set({
+      name: SESSION_COOKIE,
+      value: makeSession(user.id),
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: SESSION_TTL_SECONDS,
+    });
+
+    return response;
+  } catch (error) {
+    console.error("Login error:", error);
+
+    return NextResponse.json(
+      {
+        error: "Unable to sign in. Please try again.",
+      },
+      { status: 500 }
+    );
+  }
+}
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\src\app\api\auth\logout\route.ts
+============================================================
+import { NextResponse } from "next/server";
+import { SESSION_COOKIE } from "@/lib/auth";
+
+export async function POST() {
+  const response = NextResponse.json({ ok: true });
+  response.cookies.set(SESSION_COOKIE, "", { httpOnly: true, expires: new Date(0), path: "/" });
+  return response;
+}
+
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\src\app\api\auth\signup\route.ts
+============================================================
+import "dotenv/config";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaClient } from "@/generated/prisma/client";
+import { NextResponse } from "next/server";
+import { hashPassword, makeSession, SESSION_COOKIE, SESSION_TTL_SECONDS } from "@/lib/auth";
+
+const connectionString = process.env.DATABASE_URL;
+
+if (!connectionString) {
+  throw new Error("DATABASE_URL is not defined.");
+}
+
+const adapter = new PrismaPg({
+  connectionString,
+});
+
+const prisma = new PrismaClient({
+  adapter,
+});
+
+const DEFAULT_ACCOUNTS = [
+  {
+    code: "1000",
+    name: "Bank",
+    accountType: "ASSET",
+  },
+  {
+    code: "1100",
+    name: "Accounts Receivable",
+    accountType: "ASSET",
+  },
+  {
+    code: "2000",
+    name: "Output VAT",
+    accountType: "LIABILITY",
+  },
+  {
+    code: "2100",
+    name: "Input VAT",
+    accountType: "ASSET",
+  },
+  {
+    code: "2200",
+    name: "Accounts Payable",
+    accountType: "LIABILITY",
+  },
+  {
+    code: "4000",
+    name: "Legal / Professional Revenue",
+    accountType: "REVENUE",
+  },
+  {
+    code: "5000",
+    name: "Operating Expenses",
+    accountType: "EXPENSE",
+  },
+];
+
+export async function POST(request: Request) {
+  try {
+    const body = await request.json();
+
+    const firmName = String(body.firmName || "").trim();
+    const name = String(body.name || "").trim();
+    const email = String(body.email || "")
+      .trim()
+      .toLowerCase();
+    const password = String(body.password || "");
+    const confirmPassword = String(body.confirmPassword || "");
+
+    if (!firmName) {
+      return NextResponse.json(
+        {
+          error: "Firm name is required.",
+        },
+        {
+          status: 400,
+        },
+      );
+    }
+
+    if (!name) {
+      return NextResponse.json(
+        {
+          error: "Full name is required.",
+        },
+        {
+          status: 400,
+        },
+      );
+    }
+
+    if (!email) {
+      return NextResponse.json(
+        {
+          error: "Email address is required.",
+        },
+        {
+          status: 400,
+        },
+      );
+    }
+
+    if (!password) {
+      return NextResponse.json(
+        {
+          error: "Password is required.",
+        },
+        {
+          status: 400,
+        },
+      );
+    }
+
+    if (password.length < 8) {
+      return NextResponse.json(
+        {
+          error: "Password must be at least 8 characters long.",
+        },
+        {
+          status: 400,
+        },
+      );
+    }
+
+    if (password !== confirmPassword) {
+      return NextResponse.json(
+        {
+          error: "Passwords do not match.",
+        },
+        {
+          status: 400,
+        },
+      );
+    }
+
+    const existingFirm = await prisma.firm.findFirst({
+      where: {
+        name: firmName,
+      },
+    });
+
+    if (existingFirm) {
+      return NextResponse.json(
+        {
+          error: "A firm with this name already exists.",
+        },
+        {
+          status: 409,
+        },
+      );
+    }
+
+    const existingUser = await prisma.firmUser.findFirst({
+      where: {
+        email,
+      },
+    });
+
+    if (existingUser) {
+      return NextResponse.json(
+        {
+          error: "An account with this email address already exists.",
+        },
+        {
+          status: 409,
+        },
+      );
+    }
+
+    const passwordHash = await hashPassword(password);
+
+    const result = await prisma.$transaction(async (tx) => {
+      const firm = await tx.firm.create({
+        data: {
+          name: firmName,
+        },
+      });
+
+      const user = await tx.firmUser.create({
+        data: {
+          firmId: firm.id,
+          name,
+          email,
+          passwordHash,
+          role: "OWNER",
+        },
+      });
+
+      for (const account of DEFAULT_ACCOUNTS) {
+        await tx.ledgerAccount.create({
+          data: {
+            firmId: firm.id,
+            code: account.code,
+            name: account.name,
+            accountType: account.accountType as any,
+            active: true,
+          },
+        });
+      }
+
+      return {
+        firm,
+        user,
+      };
+    });
+
+    const session = makeSession(result.user.id);
+
+    const response = NextResponse.json(
+      {
+        success: true,
+        message: "FirmLedger account created successfully.",
+        firmId: result.firm.id,
+        userId: result.user.id,
+      },
+      {
+        status: 201,
+      },
+    );
+
+    response.cookies.set({
+      name: SESSION_COOKIE,
+      value: session,
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: SESSION_TTL_SECONDS,
+    });
+
+    return response;
+  } catch (error) {
+    console.error("SIGNUP ERROR:", error);
+
+    return NextResponse.json(
+      {
+        error: "Unable to create the FirmLedger account.",
+      },
+      {
+        status: 500,
+      },
+    );
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\src\app\audit\page.tsx
+============================================================
+import Link from "next/link"; import {requireUser} from "@/lib/permissions";
+export default async function Page(){const u=await requireUser(); return <div className="shell"><aside className="sidebar"><div className="brand">Firm<span>Ledger</span></div><Link className="nav-link" href="/">â† Dashboard</Link><Link className="nav-link active" href="/audit">Audit</Link></aside><main className="main"><header className="topbar"><strong>{u.firm.name}</strong></header><section className="content"><h1 className="page-title">Audit</h1><p className="page-subtitle">This module is part of the FirmLedger foundation and will be implemented in the next accounting workflow phase.</p><div className="card" style={{marginTop:24}}><strong>Module foundation ready</strong><p className="page-subtitle">Tenant security and role checks are already applied before this area can be used.</p></div></section></main></div>}
+
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\src\app\banking\page.tsx
+============================================================
+import Link from "next/link";
+import { requireUser } from "@/lib/permissions";
+import { prisma } from "@/lib/prisma";
+export default async function Page(){const u=await requireUser();const accounts=await prisma.bankAccount.findMany({where:{firmId:u.firmId},include:{transactions:{orderBy:{transactionDate:"desc"},take:20}},orderBy:{name:"asc"}});return <div className="shell"><aside className="sidebar"><div className="brand">Firm<span>Ledger</span></div><Link className="nav-link" href="/">â† Dashboard</Link><Link className="nav-link active" href="/banking">Banking</Link><Link className="nav-link" href="/banking/reconciliation">Reconciliation</Link></aside><main className="main"><header className="topbar"><strong>{u.firm.name}</strong></header><section className="content"><div className="page-heading"><div><h1 className="page-title">Banking</h1><p className="page-subtitle">Bank accounts and system-generated receipts.</p></div><div style={{display:"flex",gap:8}}><Link className="secondary-button" href="/banking/new">Add bank</Link><Link className="primary-button" href="/payments/new">Record payment</Link></div></div>{accounts.map(a=><div className="card" style={{marginTop:24}} key={a.id}><div className="section-title">{a.name} {a.bankName ? `Â· ${a.bankName}` : ""}</div><table className="table"><thead><tr><th>Date</th><th>Description</th><th>Reference</th><th>Type</th><th>Amount</th><th>Match</th></tr></thead><tbody>{a.transactions.map(t=><tr key={t.id}><td>{t.transactionDate.toLocaleDateString("en-ZA")}</td><td>{t.description}</td><

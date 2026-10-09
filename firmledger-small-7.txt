@@ -1,0 +1,514 @@
+﻿const count = await prisma.matter.count({
+    where: { firmId: user.firmId },
+  });
+
+  const matterNumber = `MAT-${new Date().getFullYear()}-${String(
+    count + 1,
+  ).padStart(4, "0")}`;
+
+  const matter = await prisma.matter.create({
+    data: {
+      firmId: user.firmId,
+      clientId,
+      matterNumber,
+      title,
+      description:
+        String(
+          formData.get("description") || "",
+        ).trim() || null,
+    },
+  });
+
+  await audit({
+    firmId: user.firmId,
+    userId: user.id,
+    action: "CREATE",
+    entity: "Matter",
+    entityId: matter.id,
+  });
+
+  revalidatePath("/matters");
+  redirect("/matters");
+}
+
+export async function createInvoice(formData: FormData) {
+  const user = await requireRole([
+    "OWNER",
+    "ADMIN",
+    "FINANCE",
+    "LAWYER",
+    "ACCOUNTANT",
+  ]);
+
+  const clientId = String(
+    formData.get("clientId") || "",
+  );
+
+  const matterId =
+    String(formData.get("matterId") || "") || null;
+
+  const description = String(
+    formData.get("description") || "",
+  ).trim();
+
+  /*
+   * Keep the raw values first so we can verify exactly
+   * what the browser submitted.
+   */
+  const subtotalRaw = String(
+    formData.get("subtotal") || "0",
+  );
+
+  const taxRateRaw = String(
+    formData.get("taxRate") || "0",
+  );
+
+  const subtotal = money(subtotalRaw);
+  const taxRate = money(taxRateRaw);
+
+  /*
+   * VAT calculation:
+   *
+   * Example:
+   * subtotal = 10,000
+   * taxRate = 15
+   *
+   * taxAmount = 10,000 Ã— 15 / 100 = 1,500
+   * total = 10,000 + 1,500 = 11,500
+   */
+  const taxAmount =
+    Math.round(subtotal * taxRate) / 100;
+
+  const total =
+    Math.round(
+      (subtotal + taxAmount) * 100,
+    ) / 100;
+
+  console.log("INVOICE CALCULATION:", {
+    subtotalRaw,
+    taxRateRaw,
+    subtotal,
+    taxRate,
+    taxAmount,
+    total,
+  });
+
+  if (
+    !clientId ||
+    !description ||
+    subtotal <= 0
+  ) {
+    throw new Error(
+      "Client, description and amount are required.",
+    );
+  }
+
+  if (taxRate < 0 || taxRate > 100) {
+    throw new Error(
+      "VAT rate must be between 0% and 100%.",
+    );
+  }
+
+  const client = await prisma.client.findFirst({
+    where: {
+      id: clientId,
+      firmId: user.firmId,
+    },
+  });
+
+  if (!client) {
+    throw new Error("Client not found.");
+  }
+
+  if (matterId) {
+    const matter = await prisma.matter.findFirst({
+      where: {
+        id: matterId,
+        firmId: user.firmId,
+        clientId,
+      },
+    });
+
+    if (!matter) {
+      throw new Error(
+        "Matter does not belong to this client.",
+      );
+    }
+  }
+
+  const count = await prisma.invoice.count({
+    where: {
+      firmId: user.firmId,
+    },
+  });
+
+  const invoiceNumber = `INV-${String(
+    count + 1,
+  ).padStart(4, "0")}`;
+
+  const issueDate = new Date();
+
+  const dueDate = new Date();
+  dueDate.setDate(
+    dueDate.getDate() + 30,
+  );
+
+  const invoice = await prisma.$transaction(
+    async (tx) => {
+      const created =
+        await tx.invoice.create({
+          data: {
+            firmId: user.firmId,
+            clientId,
+            matterId,
+            invoiceNumber,
+            issueDate,
+            dueDate,
+            status: "SENT",
+            subtotal,
+            taxAmount,
+            total,
+            balanceDue: total,
+
+            items: {
+              create: [
+                {
+                  description,
+                  quantity: 1,
+                  unitPrice: subtotal,
+                  taxRate,
+                  lineTotal: subtotal,
+                },
+              ],
+            },
+          },
+        });
+
+      await postInvoice(tx, {
+        firmId: user.firmId,
+        invoiceId: created.id,
+        invoiceNumber,
+        entryDate: issueDate,
+        subtotal,
+        taxAmount,
+      });
+
+      await tx.accountantReview.create({
+        data: {
+          firmId: user.firmId,
+          title: `Review invoice ${invoiceNumber}`,
+          status: "PENDING",
+          notes: `System-posted invoice for R${total.toFixed(
+            2,
+          )}.`,
+        },
+      });
+
+      return created;
+    },
+  );
+
+  await audit({
+    firmId: user.firmId,
+    userId: user.id,
+    action: "CREATE_AND_POST",
+    entity: "Invoice",
+    entityId: invoice.id,
+    metadata: {
+      invoiceNumber,
+      subtotal,
+      taxRate,
+      taxAmount,
+      total,
+    },
+  });
+
+  revalidatePath("/billing");
+  revalidatePath("/accounting");
+  revalidatePath("/reports");
+  revalidatePath("/");
+
+  redirect("/billing");
+}
+
+export async function createPayment(
+  formData: FormData,
+) {
+  const user = await requireRole([
+    "OWNER",
+    "ADMIN",
+    "FINANCE",
+    "ACCOUNTANT",
+  ]);
+
+  const invoiceId = String(
+    formData.get("invoiceId") || "",
+  );
+
+  const bankAccountId = String(
+    formData.get("bankAccountId") || "",
+  );
+
+  const amount = money(
+    String(formData.get("amount") || "0"),
+  );
+
+  const reference = String(
+    formData.get("reference") || "",
+  ).trim();
+
+  const method = String(
+    formData.get("method") || "EFT",
+  ).trim();
+
+  if (
+    !invoiceId ||
+    !bankAccountId ||
+    amount <= 0 ||
+    !reference
+  ) {
+    throw new Error(
+      "Invoice, bank account, amount and reference are required.",
+    );
+  }
+
+  const payment =
+    await prisma.$transaction(async (tx) => {
+      const invoice =
+        await tx.invoice.findFirst({
+          where: {
+            id: invoiceId,
+            firmId: user.firmId,
+          },
+        });
+
+      if (!invoice) {
+        throw new Error("Invoice not found.");
+      }
+
+      const bank =
+        await tx.bankAccount.findFirst({
+          where: {
+            id: bankAccountId,
+            firmId: user.firmId,
+            active: true,
+          },
+        });
+
+      if (!bank) {
+        throw new Error(
+          "Bank account not found.",
+        );
+      }
+
+      const balance = Number(
+        invoice.balanceDue,
+      );
+
+      if (amount > balance + 0.0001) {
+        throw new Error(
+          `Payment exceeds the invoice balance of R${balance.toFixed(
+            2,
+          )}.`,
+        );
+      }
+
+      const paymentDate = new Date();
+
+      const created =
+        await tx.payment.create({
+          data: {
+            firmId: user.firmId,
+            clientId: invoice.clientId,
+            matterId: invoice.matterId,
+            invoiceId,
+            reference,
+            paymentDate,
+            amount,
+            status: "COMPLETED",
+            method,
+          },
+        });
+
+      const newPaid =
+        Math.round(
+          (Number(invoice.amountPaid) +
+            amount) *
+            100,
+        ) / 100;
+
+      const newBalance =
+        Math.round(
+          (balance - amount) *
+            100,
+        ) / 100;
+
+      await tx.invoice.update({
+        where: {
+          id: invoice.id,
+        },
+        data: {
+          amountPaid: newPaid,
+          balanceDue: newBalance,
+          status:
+            newBalance === 0
+              ? "PAID"
+              : "PARTIALLY_PAID",
+        },
+      });
+
+      await postPayment(tx, {
+        firmId: user.firmId,
+        paymentId: created.id,
+        reference,
+        entryDate: paymentDate,
+        amount,
+      });
+
+      await tx.bankTransaction.create({
+        data: {
+          firmId: user.firmId,
+          bankAccountId,
+          paymentId: created.id,
+          transactionDate: paymentDate,
+          description: `Client payment - ${invoice.invoiceNumber}`,
+          reference,
+          amount,
+          type: "CREDIT",
+          matched: true,
+        },
+      });
+
+      await tx.accountantReview.create({
+        data: {
+          firmId: user.firmId,
+          title: `Review payment ${reference}`,
+          status: "PENDING",
+          notes: `R${amount.toFixed(
+            2,
+          )} allocated to ${invoice.invoiceNumber}.`,
+        },
+      });
+
+      return created;
+    });
+
+  await audit({
+    firmId: user.firmId,
+    userId: user.id,
+    action: "CREATE_AND_POST",
+    entity: "Payment",
+    entityId: payment.id,
+    metadata: {
+      reference,
+      amount,
+    },
+  });
+
+  revalidatePath("/payments");
+  revalidatePath("/billing");
+  revalidatePath("/banking");
+  revalidatePath("/accounting");
+  revalidatePath("/reports");
+  revalidatePath("/");
+
+  redirect("/payments");
+}
+
+export async function createExpense(
+  formData: FormData,
+) {
+  const user = await requireRole([
+    "OWNER",
+    "ADMIN",
+    "FINANCE",
+    "ACCOUNTANT",
+  ]);
+
+  const description = String(
+    formData.get("description") || "",
+  ).trim();
+
+  const clientId =
+    String(formData.get("clientId") || "") ||
+    null;
+
+  const matterId =
+    String(formData.get("matterId") || "") ||
+    null;
+
+  const bankAccountId = String(
+    formData.get("bankAccountId") || "",
+  );
+
+  const netAmount = money(
+    String(formData.get("amount") || "0"),
+  );
+
+  const taxAmount = money(
+    String(formData.get("taxAmount") || "0"),
+  );
+
+  const reference = String(
+    formData.get("reference") || "",
+  ).trim();
+
+  if (
+    !description ||
+    !bankAccountId ||
+    netAmount <= 0
+  ) {
+    throw new Error(
+      "Description, bank account and amount are required.",
+    );
+  }
+
+  if (clientId) {
+    const client =
+      await prisma.client.findFirst({
+        where: {
+          id: clientId,
+          firmId: user.firmId,
+        },
+      });
+
+    if (!client) {
+      throw new Error("Client not found.");
+    }
+  }
+
+  if (matterId) {
+    const matter =
+      await prisma.matter.findFirst({
+        where: {
+          id: matterId,
+          firmId: user.firmId,
+          ...(clientId
+            ? { clientId }
+            : {}),
+        },
+      });
+
+    if (!matter) {
+      throw new Error(
+        "Matter not found or does not match the client.",
+      );
+    }
+  }
+
+  const bank =
+    await prisma.bankAccount.findFirst({
+      where: {
+        id: bankAccountId,
+        firmId: user.firmId,
+        active: true,
+      },
+    });
+
+  if (!bank) {
+    throw new Error(
+      "Bank account not found.",
+    );
+  }
+
+  const ex

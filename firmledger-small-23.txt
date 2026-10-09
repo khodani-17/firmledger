@@ -1,0 +1,44 @@
+﻿g;description:string;date:Date;net:number;tax:number}) {
+  const expense=await account(db,a.firmId,"5000"), vat=await account(db,a.firmId,"2100"), ap=await account(db,a.firmId,"2200");
+  return entry(db,{firmId:a.firmId,date:a.date,description:`Purchase invoice ${a.description}`,sourceType:"PURCHASE_INVOICE",sourceId:a.id,lines:[{ledgerAccountId:expense.id,debit:a.net,credit:0,description:a.description},...(a.tax?[{ledgerAccountId:vat.id,debit:a.tax,credit:0,description:`Input VAT - ${a.description}`}]:[]),{ledgerAccountId:ap.id,debit:0,credit:a.net+a.tax,description:a.description}]});
+}
+export async function postSupplierPayment(db: Db, a:{firmId:string;id:string;reference:string;date:Date;amount:number}) {
+  const ap=await account(db,a.firmId,"2200"), bank=await account(db,a.firmId,"1000");
+  return entry(db,{firmId:a.firmId,date:a.date,description:`Supplier payment ${a.reference}`,sourceType:"SUPPLIER_PAYMENT",sourceId:a.id,lines:[{ledgerAccountId:ap.id,debit:a.amount,credit:0,description:a.reference},{ledgerAccountId:bank.id,debit:0,credit:a.amount,description:a.reference}]});
+}
+
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\src\lib\prisma.ts
+============================================================
+import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaClient } from "@/generated/prisma/client";
+
+const globalForPrisma = globalThis as unknown as {
+  prisma: PrismaClient | undefined;
+};
+
+const connectionString = process.env.DATABASE_URL;
+
+if (!connectionString) {
+  throw new Error("DATABASE_URL is not defined.");
+}
+
+const adapter = new PrismaPg({
+  connectionString,
+});
+
+export const prisma =
+  globalForPrisma.prisma ??
+  new PrismaClient({
+    adapter,
+  });
+
+if (process.env.NODE_ENV !== "production") {
+  globalForPrisma.prisma = prisma;
+}
+
+export default prisma;
+
+

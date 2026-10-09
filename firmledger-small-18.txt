@@ -1,0 +1,193 @@
+﻿t: "VOID",
+        },
+      },
+      include: {
+        client: true,
+      },
+      orderBy: {
+        dueDate: "asc",
+      },
+    }),
+
+    prisma.bankAccount.findMany({
+      where: {
+        firmId: user.firmId,
+        active: true,
+        isTrust: false,
+      },
+      orderBy: [
+        {
+          bankName: "asc",
+        },
+        {
+          name: "asc",
+        },
+      ],
+    }),
+  ]);
+
+  return (
+    <div className="shell">
+      <aside className="sidebar">
+        <div className="brand">
+          Firm<span>Ledger</span>
+        </div>
+
+        <Link className="nav-link" href="/payments">
+          â† Payments
+        </Link>
+      </aside>
+
+      <main className="main">
+        <header className="topbar">
+          <strong>Record client payment</strong>
+        </header>
+
+        <section className="content">
+          <h1 className="page-title">Record payment</h1>
+
+          <p className="page-subtitle">
+            Allocate the receipt to an outstanding invoice. FirmLedger
+            will update the invoice, post the double-entry journal and
+            create the bank transaction together.
+          </p>
+
+          <div
+            className="card form-card"
+            style={{ marginTop: 24 }}
+          >
+            <form action={createPayment}>
+              <label>
+                Invoice
+
+                <select
+                  name="invoiceId"
+                  required
+                  defaultValue=""
+                >
+                  <option value="" disabled>
+                    Select invoice
+                  </option>
+
+                  {invoices.map((invoice) => (
+                    <option
+                      key={invoice.id}
+                      value={invoice.id}
+                    >
+                      {invoice.invoiceNumber} â€”{" "}
+                      {invoice.client.displayName} â€” R
+                      {Number(invoice.balanceDue).toFixed(2)} due
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                Bank account
+
+                <select
+                  name="bankAccountId"
+                  required
+                  defaultValue=""
+                >
+                  <option value="" disabled>
+                    Select bank account
+                  </option>
+
+                  {banks.map((bank) => (
+                    <option
+                      key={bank.id}
+                      value={bank.id}
+                    >
+                      {bank.bankName
+                        ? `${bank.bankName} â€” ${bank.name}`
+                        : bank.name}
+                    </option>
+                  ))}
+                </select>
+
+                {banks.length === 0 && (
+                  <p className="field-help">
+                    No business bank accounts have been added yet.{" "}
+                    <Link href="/banking/new">
+                      Add a bank account
+                    </Link>
+                    .
+                  </p>
+                )}
+              </label>
+
+              <label>
+                Amount
+
+                <input
+                  name="amount"
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  required
+                  placeholder="0.00"
+                />
+              </label>
+
+              <label>
+                Payment reference
+
+                <input
+                  name="reference"
+                  required
+                  placeholder="EFT-CLIENT-001"
+                />
+              </label>
+
+              <label>
+                Method
+
+                <select
+                  name="method"
+                  defaultValue="EFT"
+                >
+                  <option value="EFT">EFT</option>
+                  <option value="Card">Card</option>
+                  <option value="Cash">Cash</option>
+                  <option value="Other">Other</option>
+                </select>
+              </label>
+
+              <button
+                className="primary-button"
+                type="submit"
+                disabled={banks.length === 0}
+              >
+                Post payment
+              </button>
+            </form>
+          </div>
+        </section>
+      </main>
+    </div>
+  );
+}
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\src\app\periods\page.tsx
+============================================================
+import Link from "next/link"; import {requireRole} from "@/lib/permissions"; import {prisma} from "@/lib/prisma"; import {createFinancialPeriod,closeFinancialPeriod} from "@/app/actions";
+export default async function Periods(){const u=await requireRole(["OWNER","ADMIN","FINANCE","ACCOUNTANT"]);const rows=await prisma.financialPeriod.findMany({where:{firmId:u.firmId},orderBy:{startDate:"desc"}});return <div className="shell"><aside className="sidebar"><div className="brand">Firm<span>Ledger</span></div><Link className="nav-link" href="/">â† Dashboard</Link><Link className="nav-link active" href="/periods">Financial periods</Link><Link className="nav-link" href="/accounting">Accounting</Link></aside><main className="main"><section className="content"><h1 className="page-title">Financial periods</h1><p className="page-subtitle">Control open and closed accounting periods and protect month-end.</p><div className="grid grid-2" style={{marginTop:24}}><form action={createFinancialPeriod} className="card form-grid"><div className="section-title">Create period</div><label>Name<input name="name" placeholder="September 2026" required/></label><label>Start date<input name="startDate" type="date" required/></label><label>End date<input name="endDate" type="date" required/></label><button className="primary-button">Create period</button></form><div className="card"><div className="section-title">Close-control rules</div><p className="page-subtitle">FirmLedger will not close a period while accountant review items remain pending.</p><p className="page-subtitle">Closed periods are retained for reporting and audit history.</p></div></div><div className="card" style={{marginTop:24}}><table className="table"><thead><tr><th>Period</th><th>Dates</th><th>Status</th><th>Action</th></tr></thead><tbody>{rows.map(p=><tr key={p.id}><td><strong>{p.name}</strong></td><td>{p.startDate.toLocaleDateString("en-ZA")} â€“ {p.endDate.toLocaleDateString("en-ZA")}</td><td><span className="badge">{p.status}</span></td><td>{p.status==="OPEN"?<form action={closeFinancialPeriod}><input type="hidden" name="periodId" value={p.id}/><button className="secondary-button">Close period</button></form>:<span className="metric-label">Closed {p.closedAt?.toLocaleDateString("en-ZA")}</span>}</td></tr>)}</tbody></table></div></section></main></div>}
+
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\src\app\purchases\page.tsx
+============================================================
+import Link from "next/link"; import {requireRole} from "@/lib/permissions"; import {prisma} from "@/lib/prisma";
+export default async function Purchases(){const u=await requireRole(["OWNER","ADMIN","FINANCE","ACCOUNTANT"]);const rows=await prisma.purchaseInvoice.findMany({where:{firmId:u.firmId},include:{supplier:true,matter:true},orderBy:{invoiceDate:"desc"}});return <div className="shell"><aside className="sidebar"><div className="brand">Firm<span>Ledger</span></div><Link className="nav-link" href="/">â† Dashboard</Link><Link className="nav-link" href="/suppliers">Suppliers</Link><Link className="nav-link active" href="/purchases">Purchase invoices</Link><Link className="nav-link" href="/expenses">Expenses</Link></aside><main className="main"><section className="content"><div className="page-heading"><div><h1 className="page-title">Purchase invoices</h1><p className="page-subtitle">Supplier bills, VAT and accounts payable.</p></div><div style={{display:"flex",gap:8}}><Link className="secondary-button" href="/purchases/pay">Pay supplier</Link><Link className="primary-button" href="/purchases/new">New purchase invoice</Link></div></div><div className="card" style={{marginTop:24}}><table className="table"><thead><tr><th>Supplier</th><th>Invoice</th><th>Date</th><th>Status</th><th>Total</th><th>Balance</th></tr></thead><tbody>{rows.map(r=><tr key={r.id}><td>{r.supplier.name}</td><td>{r.invoiceNumber}</td><td>{r.invoiceDate.toLocaleDateString("en-ZA")}</td><td><span className="badge">{r.status}</span></td><td>R{Number(r.total).toFixed(2)}</td><td>R{Number(r.balanceDue).toFixed(2)}</td></tr>)}</tbody></table></div></section></main></div>}
+
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\src\app\purchases\new\page.tsx
+============================================================
+import Link from "next/link"; import {createPurchaseInvoice} from "@/app/actions"; import {requireRole} from "@/lib/permissions"; import {prisma} from "@/lib/prisma";
+export default async function NewPurchase(){const u=await requireRole(["OWNER","ADMIN","FINANCE","ACCOUNTANT"]);const [suppliers,matters]=await Promise.all([prisma.supplier.findMany({where:{firmId:u.firmId,active:true},orderBy:{name:"asc"}}),prisma.matter.findMany({where:{firmId:u.firmId,status:{not:"ARCHIVED"}},include:{client:true},orderBy:{matterNumber:"desc"}})]);return <div className="shell"><aside className="sidebar"><div className="brand">Firm<span>Ledger</span></div><Link className="nav-link" href="/purchases">â† Purchase invoices</Link></aside><main className="main"><section className="content"><h1 className="page-title">New purchase invoice</h1><form action={createPurchaseInvoice} className="card form-grid"><label>Supplier<select name="supplierId" required><option value="">Select supplier</option>{suppliers.map(s=><option key={s.id} value={s.id}>

@@ -1,0 +1,452 @@
+﻿on String?
+  debit       Decimal @default(0) @db.Decimal(18, 2)
+  credit      Decimal @default(0) @db.Decimal(18, 2)
+
+  journalEntry  JournalEntry  @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
+  ledgerAccount LedgerAccount @relation(fields: [ledgerAccountId], references: [id])
+
+  @@index([journalEntryId])
+  @@index([ledgerAccountId])
+}
+
+model TaxRate {
+  id        String   @id @default(cuid())
+  firmId    String
+  name      String
+  rate      Decimal  @db.Decimal(5, 2)
+  code      String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  firm Firm @relation(fields: [firmId], references: [id], onDelete: Cascade)
+
+  @@index([firmId])
+}
+
+model FinancialPeriod {
+  id        String   @id @default(cuid())
+  firmId    String
+  name      String
+  startDate DateTime
+  endDate   DateTime
+
+  status FinancialPeriodStatus @default(OPEN)
+
+  closedBy  String?
+  closedAt  DateTime?
+  createdAt DateTime  @default(now())
+
+  reviews        AccountantReview[]
+  closer         FirmUser?          @relation("ClosedBy", fields: [closedBy], references: [id])
+  firm           Firm               @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  journalEntries JournalEntry[]
+
+  @@unique([firmId, startDate, endDate])
+  @@index([firmId])
+}
+
+model AccountantReview {
+  id       String  @id @default(cuid())
+  firmId   String
+  periodId String?
+
+  title      String
+  reviewerId String?
+
+  status ReviewStatus @default(PENDING)
+
+  notes    String?
+  comments String?
+
+  reviewedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  firm     Firm             @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  period   FinancialPeriod? @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  reviewer FirmUser?        @relation("ReviewBy", fields: [reviewerId], references: [id])
+
+  @@index([firmId])
+  @@index([periodId])
+  @@index([status])
+}
+
+model AuditLog {
+  id     String  @id @default(cuid())
+  firmId String
+  userId String?
+
+  action   String
+  entity   String
+  entityId String?
+  metadata Json?
+
+  createdAt DateTime @default(now())
+
+  firm Firm      @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  user FirmUser? @relation(fields: [userId], references: [id])
+
+  @@index([firmId])
+  @@index([entity, entityId])
+  @@index([createdAt])
+}
+
+model Supplier {
+  id     String @id @default(cuid())
+  firmId String
+
+  supplierCode String?
+  type         SupplierType @default(COMPANY)
+  supplierType SupplierType @default(COMPANY)
+
+  name               String
+  registrationNumber String?
+  vatNumber          String?
+  taxNumber          String?
+
+  email   String?
+  phone   String?
+  address String?
+
+  active Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  expenses         Expense[]
+  purchaseInvoices PurchaseInvoice[]
+  firm             Firm              @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  payments         SupplierPayment[]
+
+  @@unique([firmId, supplierCode])
+  @@index([firmId])
+}
+
+model PurchaseInvoice {
+  id         String  @id @default(cuid())
+  firmId     String
+  supplierId String
+  matterId   String?
+
+  invoiceNumber String
+  invoiceDate   DateTime
+  dueDate       DateTime?
+
+  subtotal   Decimal @db.Decimal(18, 2)
+  taxAmount  Decimal @default(0) @db.Decimal(18, 2)
+  total      Decimal @db.Decimal(18, 2)
+  amountPaid Decimal @default(0) @db.Decimal(18, 2)
+  balanceDue Decimal @db.Decimal(18, 2)
+
+  description String?
+  status      PurchaseInvoiceStatus @default(DRAFT)
+  notes       String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  firm     Firm              @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  supplier Supplier          @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  matter   Matter?           @relation(fields: [matterId], references: [id])
+  payments SupplierPayment[]
+
+  @@unique([firmId, invoiceNumber])
+  @@index([firmId])
+  @@index([supplierId])
+  @@index([matterId])
+}
+
+model SupplierPayment {
+  id                String  @id @default(cuid())
+  firmId            String
+  supplierId        String
+  purchaseInvoiceId String?
+  bankAccountId     String?
+  createdById       String?
+
+  paymentNumber String   @default(cuid())
+  amount        Decimal  @db.Decimal(18, 2)
+  paymentDate   DateTime @default(now())
+  reference     String?
+  notes         String?
+
+  createdAt DateTime @default(now())
+
+  bankAccount     BankAccount?     @relation(fields: [bankAccountId], references: [id])
+  createdBy       FirmUser?        @relation(fields: [createdById], references: [id])
+  firm            Firm             @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  purchaseInvoice PurchaseInvoice? @relation(fields: [purchaseInvoiceId], references: [id])
+  supplier        Supplier         @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
+  @@unique([firmId, paymentNumber])
+  @@index([firmId])
+  @@index([supplierId])
+  @@index([purchaseInvoiceId])
+}
+
+model TrustAccount {
+  id     String @id @default(cuid())
+  firmId String
+
+  name          String
+  bankName      String?
+  accountNumber String?
+  branchCode    String?
+  currency      String  @default("ZAR")
+  active        Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  firm            Firm                  @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  reconciliations TrustReconciliation[]
+  transactions    TrustTransaction[]
+
+  @@index([firmId])
+}
+
+model TrustTransaction {
+  id             String  @id @default(cuid())
+  firmId         String
+  trustAccountId String
+  clientId       String?
+  matterId       String?
+  createdById    String?
+
+  type   TrustTransactionType
+  status TrustTransactionStatus @default(POSTED)
+
+  amount          Decimal  @db.Decimal(18, 2)
+  transactionDate DateTime @default(now())
+
+  reference   String?
+  description String?
+
+  createdAt DateTime @default(now())
+
+  client       Client?      @relation(fields: [clientId], references: [id])
+  createdBy    FirmUser?    @relation(fields: [createdById], references: [id])
+  firm         Firm         @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  matter       Matter?      @relation(fields: [matterId], references: [id])
+  trustAccount TrustAccount @relation(fields: [trustAccountId], references: [id], onDelete: Cascade)
+
+  @@index([firmId])
+  @@index([trustAccountId])
+  @@index([clientId])
+  @@index([matterId])
+}
+
+model TrustReconciliation {
+  id             String @id @default(cuid())
+  firmId         String
+  trustAccountId String
+
+  reconciliationDate DateTime @default(now())
+  statementBalance   Decimal  @db.Decimal(18, 2)
+  ledgerBalance      Decimal  @db.Decimal(18, 2)
+  difference         Decimal  @db.Decimal(18, 2)
+
+  status ReconciliationStatus @default(OPEN)
+  notes  String?
+
+  createdAt DateTime @default(now())
+
+  firm         Firm         @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  trustAccount TrustAccount @relation(fields: [trustAccountId], references: [id], onDelete: Cascade)
+
+  @@index([firmId])
+  @@index([trustAccountId])
+}
+
+model TaxReturn {
+  id     String @id @default(cuid())
+  firmId String
+
+  returnType String?
+  taxType    String?
+
+  periodStart DateTime
+  periodEnd   DateTime
+
+  outputVat Decimal @default(0) @db.Decimal(18, 2)
+  inputVat  Decimal @default(0) @db.Decimal(18, 2)
+  netVat    Decimal @default(0) @db.Decimal(18, 2)
+
+  status TaxReturnStatus @default(DRAFT)
+
+  preparedBy  String?
+  preparedAt  DateTime?
+  submittedAt DateTime?
+
+  reference String?
+  notes     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  firm Firm @relation(fields: [firmId], references: [id], onDelete: Cascade)
+
+  @@index([firmId])
+  @@index([periodStart, periodEnd])
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  FINANCE
+  LAWYER
+  STAFF
+  ACCOUNTANT
+}
+
+enum ClientType {
+  INDIVIDUAL
+  COMPANY
+  TRUST
+  GOVERNMENT
+  OTHER
+}
+
+enum MatterStatus {
+  OPEN
+  ON_HOLD
+  CLOSED
+  ARCHIVED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+  VOID
+}
+
+enum PaymentStatus {
+  PENDING
+  RECEIVED
+  ALLOCATED
+  PARTIALLY_ALLOCATED
+  COMPLETED
+  REFUNDED
+  VOID
+}
+
+enum ExpenseStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  PAID
+  REJECTED
+}
+
+enum BankTransactionType {
+  DEBIT
+  CREDIT
+}
+
+enum BankReconciliationStatus {
+  COMPLETED
+  REOPENED
+}
+
+enum AccountType {
+  ASSET
+  LIABILITY
+  EQUITY
+  REVENUE
+  EXPENSE
+}
+
+enum ReviewStatus {
+  PENDING
+  IN_REVIEW
+  APPROVED
+  REJECTED
+  REVIEWED
+  FLAGGED
+  CORRECTED
+}
+
+enum FinancialPeriodStatus {
+  OPEN
+  CLOSED
+  LOCKED
+}
+
+enum SupplierType {
+  COMPANY
+  INDIVIDUAL
+  PROFESSIONAL
+  GOVERNMENT
+  OTHER
+}
+
+enum PurchaseInvoiceStatus {
+  DRAFT
+  RECEIVED
+  APPROVED
+  PARTIALLY_PAID
+  PAID
+  VOID
+}
+
+enum TrustTransactionType {
+  RECEIPT
+  PAYMENT
+  TRANSFER
+  REFUND
+  INTEREST
+  ADJUSTMENT
+  FEE
+  REVERSAL
+}
+
+enum TrustTransactionStatus {
+  PENDING
+  POSTED
+  VOID
+}
+
+enum ReconciliationStatus {
+  OPEN
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum TaxReturnStatus {
+  DRAFT
+  PREPARED
+  SUBMITTED
+  ACCEPTED
+  REJECTED
+}
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\prisma\seed.ts
+============================================================
+import "dotenv/config";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaClient } from "../src/generated/prisma/client";
+import { hashPassword } from "../src/lib/auth";
+import { postInvoice } from "../src/lib/posting";
+
+const connectionString = process.env.DATABASE_URL;
+
+if (!connectionString) {
+  throw new Error("DATABASE_URL is not defined.");
+}
+
+const adapter = new PrismaPg({
+  connectionString,
+});
+
+const prisma = new PrismaClient({
+  adapter,
+});
+
+async function main() {
+  await prisma.auditLog.deleteMany();
+  await prisma.accountantReview.deleteMany();
+  await prisma

@@ -1,0 +1,1285 @@
+﻿"clientId") || "",
+  );
+
+  const matterId =
+    String(
+      formData.get("matterId") || "",
+    ) || null;
+
+  const description = String(
+    formData.get("description") || "",
+  ).trim();
+
+  const subtotal = money(
+    String(
+      formData.get("subtotal") || "0",
+    ),
+  );
+
+  const taxRate = money(
+    String(
+      formData.get("taxRate") || "0",
+    ),
+  );
+
+  if (
+    !clientId ||
+    !description ||
+    subtotal <= 0
+  ) {
+    throw new Error(
+      "Client, description and amount are required.",
+    );
+  }
+
+  const client =
+    await prisma.client.findFirst({
+      where: {
+        id: clientId,
+        firmId: user.firmId,
+      },
+    });
+
+  if (!client) {
+    throw new Error(
+      "Client not found.",
+    );
+  }
+
+  const rec =
+    await prisma.recurringInvoice.create({
+      data: {
+        firmId: user.firmId,
+        clientId,
+        matterId,
+        description,
+        subtotal,
+        taxRate,
+        frequency: String(
+          formData.get("frequency") ||
+            "MONTHLY",
+        ),
+        nextRunDate: new Date(
+          String(
+            formData.get("nextRunDate") ||
+              new Date().toISOString(),
+          ),
+        ),
+      },
+    });
+
+  await audit({
+    firmId: user.firmId,
+    userId: user.id,
+    action: "CREATE",
+    entity: "RecurringInvoice",
+    entityId: rec.id,
+  });
+
+  revalidatePath("/recurring");
+  redirect("/recurring");
+}
+
+export async function createCreditNote(
+  formData: FormData,
+) {
+  const user = await requireRole([
+    "OWNER",
+    "ADMIN",
+    "FINANCE",
+    "ACCOUNTANT",
+  ]);
+
+  const clientId = String(
+    formData.get("clientId") || "",
+  );
+
+  const invoiceId =
+    String(
+      formData.get("invoiceId") || "",
+    ) || null;
+
+  const reason = String(
+    formData.get("reason") || "",
+  ).trim();
+
+  const subtotal = money(
+    String(
+      formData.get("subtotal") || "0",
+    ),
+  );
+
+  const tax = money(
+    String(
+      formData.get("taxAmount") || "0",
+    ),
+  );
+
+  if (
+    !clientId ||
+    !reason ||
+    subtotal <= 0
+  ) {
+    throw new Error(
+      "Client, reason and amount are required.",
+    );
+  }
+
+  const count =
+    await prisma.creditNote.count({
+      where: {
+        firmId: user.firmId,
+      },
+    });
+
+  const total =
+    Math.round(
+      (subtotal + tax) * 100,
+    ) / 100;
+
+  const note =
+    await prisma.$transaction(
+      async (tx) => {
+        if (invoiceId) {
+          const inv =
+            await tx.invoice.findFirst({
+              where: {
+                id: invoiceId,
+                firmId: user.firmId,
+                clientId,
+              },
+            });
+
+          if (!inv) {
+            throw new Error(
+              "Invoice does not belong to the client.",
+            );
+          }
+        }
+
+        const created =
+          await tx.creditNote.create({
+            data: {
+              firmId: user.firmId,
+              clientId,
+              invoiceId,
+              creditNumber: `CN-${String(
+                count + 1,
+              ).padStart(4, "0")}`,
+              issueDate: new Date(),
+              reason,
+              subtotal,
+              taxAmount: tax,
+              total,
+            },
+          });
+
+        if (invoiceId) {
+          const inv =
+            await tx.invoice.findFirst({
+              where: {
+                id: invoiceId,
+                firmId: user.firmId,
+                clientId,
+              },
+            });
+
+          if (inv) {
+            const balance =
+              Math.max(
+                0,
+                Number(inv.balanceDue) -
+                  total,
+              );
+
+            await tx.invoice.update({
+              where: {
+                id: inv.id,
+              },
+              data: {
+                balanceDue: balance,
+                status:
+                  balance === 0
+                    ? "PAID"
+                    : inv.status,
+              },
+            });
+          }
+        }
+
+        return created;
+      },
+    );
+
+  await audit({
+    firmId: user.firmId,
+    userId: user.id,
+    action: "CREATE",
+    entity: "CreditNote",
+    entityId: note.id,
+    metadata: {
+      total,
+    },
+  });
+
+  revalidatePath("/credit-notes");
+  revalidatePath("/billing");
+
+  redirect("/credit-notes");
+}
+
+export async function createSupplierPayment(
+  formData: FormData,
+) {
+  const user = await requireRole([
+    "OWNER",
+    "ADMIN",
+    "FINANCE",
+    "ACCOUNTANT",
+  ]);
+
+  const supplierId = String(
+    formData.get("supplierId") || "",
+  );
+
+  const purchaseInvoiceId =
+    String(
+      formData.get("purchaseInvoiceId") ||
+        "",
+    ) || null;
+
+  const bankAccountId = String(
+    formData.get("bankAccountId") || "",
+  );
+
+  const reference = String(
+    formData.get("reference") || "",
+  ).trim();
+
+  const amount = money(
+    String(
+      formData.get("amount") || "0",
+    ),
+  );
+
+  if (
+    !supplierId ||
+    !bankAccountId ||
+    !reference ||
+    amount <= 0
+  ) {
+    throw new Error(
+      "Supplier, bank account, reference and amount are required.",
+    );
+  }
+
+  const supplier =
+    await prisma.supplier.findFirst({
+      where: {
+        id: supplierId,
+        firmId: user.firmId,
+      },
+    });
+
+  if (!supplier) {
+    throw new Error(
+      "Supplier not found.",
+    );
+  }
+
+  const bank =
+    await prisma.bankAccount.findFirst({
+      where: {
+        id: bankAccountId,
+        firmId: user.firmId,
+        active: true,
+        isTrust: false,
+      },
+    });
+
+  if (!bank) {
+    throw new Error(
+      "Business bank account not found.",
+    );
+  }
+
+  const payment =
+    await prisma.$transaction(
+      async (tx) => {
+        let invoice: any = null;
+
+        if (purchaseInvoiceId) {
+          invoice =
+            await tx.purchaseInvoice.findFirst({
+              where: {
+                id: purchaseInvoiceId,
+                firmId: user.firmId,
+                supplierId,
+              },
+            });
+
+          if (!invoice) {
+            throw new Error(
+              "Purchase invoice not found.",
+            );
+          }
+
+          if (
+            amount >
+            Number(
+              invoice.balanceDue,
+            ) + 0.001
+          ) {
+            throw new Error(
+              `Payment exceeds payable balance of R${Number(
+                invoice.balanceDue,
+              ).toFixed(2)}.`,
+            );
+          }
+        }
+
+        const paymentDate =
+          new Date();
+
+        const created =
+          await tx.supplierPayment.create({
+            data: {
+              firmId: user.firmId,
+              supplierId,
+              purchaseInvoiceId,
+              bankAccountId,
+              paymentDate,
+              reference,
+              amount,
+            },
+          });
+
+        if (invoice) {
+          const balance =
+            Math.round(
+              (Number(
+                invoice.balanceDue,
+              ) - amount) *
+                100,
+            ) / 100;
+
+          await tx.purchaseInvoice.update(
+            {
+              where: {
+                id: invoice.id,
+              },
+              data: {
+                amountPaid: {
+                  increment: amount,
+                },
+                balanceDue: balance,
+                status:
+                  balance === 0
+                    ? "PAID"
+                    : "PARTIALLY_PAID",
+              },
+            },
+          );
+        }
+
+        await postSupplierPayment(tx, {
+          firmId: user.firmId,
+          id: created.id,
+          reference,
+          date: paymentDate,
+          amount,
+        });
+
+        await tx.bankTransaction.create({
+          data: {
+            firmId: user.firmId,
+            bankAccountId,
+            transactionDate:
+              paymentDate,
+            description: `Supplier payment - ${supplier.name}`,
+            reference,
+            amount,
+            type: "DEBIT",
+            matched: true,
+          },
+        });
+
+        await tx.accountantReview.create({
+          data: {
+            firmId: user.firmId,
+            title: `Review supplier payment ${reference}`,
+            status: "PENDING",
+            notes: `R${amount.toFixed(
+              2,
+            )} paid to ${supplier.name}.`,
+          },
+        });
+
+        return created;
+      },
+    );
+
+  await audit({
+    firmId: user.firmId,
+    userId: user.id,
+    action: "CREATE_AND_POST",
+    entity: "SupplierPayment",
+    entityId: payment.id,
+    metadata: {
+      amount,
+      reference,
+    },
+  });
+
+  revalidatePath("/purchases");
+  revalidatePath("/banking");
+  revalidatePath("/accounting");
+
+  redirect("/purchases");
+}
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\src\app\globals.css
+============================================================
+:root {
+  --bg: #071a2b;
+  --bg-deep: #04111d;
+  --surface: #0b2236;
+  --surface-2: #0e2a42;
+  --surface-hover: #12334e;
+
+  --fg: #f5f7fa;
+  --muted: #9fb2c3;
+  --muted-light: #c2d0dc;
+
+  --border: #1b3a52;
+  --border-light: #244862;
+
+  --brand: #0b1f33;
+  --brand-light: #163b5a;
+  --accent: #3b82f6;
+  --accent-hover: #2563c7;
+
+  --success: #34d399;
+  --warning: #fbbf24;
+  --danger: #f87171;
+
+  --panel: #0b2236;
+}
+
+/* =========================================================
+   Base
+   ========================================================= */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+body {
+  min-height: 100vh;
+}
+
+a {
+  text-decoration: none;
+  color: inherit;
+}
+
+/* =========================================================
+   Main Application
+   ========================================================= */
+
+.shell {
+  min-height: 100vh;
+  display: flex;
+  background: var(--bg);
+}
+
+.sidebar {
+  width: 250px;
+  background: var(--bg-deep);
+  color: #fff;
+  padding: 24px 16px;
+  position: fixed;
+  inset: 0 auto 0 0;
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+}
+
+.brand {
+  font-size: 22px;
+  font-weight: 800;
+  padding: 0 10px 28px;
+  color: #ffffff;
+}
+
+.brand span {
+  color: #60a5fa;
+}
+
+.nav-link {
+  display: block;
+  padding: 10px 12px;
+  border-radius: 8px;
+  color: #aebfcd;
+  margin: 3px 0;
+  font-size: 14px;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.nav-link:hover {
+  background: #0d2a42;
+  color: #ffffff;
+}
+
+.nav-link.active {
+  background: #123957;
+  color: #ffffff;
+}
+
+.main {
+  margin-left: 250px;
+  width: calc(100% - 250px);
+  min-height: 100vh;
+  background: var(--bg);
+}
+
+.topbar {
+  height: 72px;
+  background: #081d30;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 32px;
+}
+
+.content {
+  padding: 32px;
+  max-width: 1500px;
+}
+
+.page-title {
+  font-size: 28px;
+  font-weight: 750;
+  margin: 0;
+  color: #ffffff;
+}
+
+.page-subtitle {
+  color: var(--muted);
+  margin-top: 6px;
+}
+
+/* =========================================================
+   Grid
+   ========================================================= */
+
+.grid {
+  display: grid;
+  gap: 18px;
+}
+
+.grid-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.grid-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+/* =========================================================
+   Cards
+   ========================================================= */
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+.card:hover {
+  border-color: var(--border-light);
+}
+
+.metric-label {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.metric-value {
+  font-size: 28px;
+  font-weight: 750;
+  margin-top: 8px;
+  color: #ffffff;
+}
+
+.section-title {
+  font-size: 17px;
+  font-weight: 700;
+  margin-bottom: 16px;
+  color: #ffffff;
+}
+
+/* =========================================================
+   Quick Actions
+   ========================================================= */
+
+.action-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+.action {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 10px;
+  padding: 16px;
+  color: #ffffff;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    transform 0.15s ease;
+}
+
+.action:hover {
+  border-color: #315875;
+  background: var(--surface-2);
+  transform: translateY(-1px);
+}
+
+/* =========================================================
+   Tables
+   ========================================================= */
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--surface);
+}
+
+.table th,
+.table td {
+  text-align: left;
+  padding: 13px 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+
+.table th {
+  color: var(--muted);
+  font-weight: 600;
+  background: #091e31;
+}
+
+.table td {
+  color: #dce6ed;
+}
+
+.table tr:hover td {
+  background: #0d2941;
+}
+
+/* =========================================================
+   Badges
+   ========================================================= */
+
+.badge {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 4px 9px;
+  font-size: 12px;
+  background: #123957;
+  color: #93c5fd;
+}
+
+/* =========================================================
+   Buttons
+   ========================================================= */
+
+.primary-button {
+  border: 0;
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--accent);
+  color: #ffffff;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    transform 0.15s ease;
+}
+
+.primary-button:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.primary-button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.primary-button:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.logout-button {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted-light);
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.logout-button:hover {
+  background: var(--surface-hover);
+  color: #ffffff;
+}
+
+/* =========================================================
+   Forms
+   ========================================================= */
+
+.form-card {
+  max-width: 720px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+}
+
+.form-card form {
+  display: grid;
+  gap: 16px;
+}
+
+.form-card label {
+  display: grid;
+  gap: 7px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #dce6ed;
+}
+
+.form-card input,
+.form-card select,
+.form-card textarea {
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  padding: 11px 12px;
+  background: #071b2c;
+  color: #ffffff;
+  font-family: inherit;
+}
+
+.form-card input::placeholder,
+.form-card textarea::placeholder {
+  color: #71879a;
+}
+
+.form-card input:focus,
+.form-card select:focus,
+.form-card textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.form-card select,
+.form-card input {
+  width: 100%;
+}
+
+.page-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+/* =========================================================
+   Errors
+   ========================================================= */
+
+.form-error {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(127, 29, 29, 0.35);
+  border: 1px solid rgba(248, 113, 113, 0.35);
+  color: #fca5a5;
+  font-size: 13px;
+}
+
+/* =========================================================
+   FirmLedger Authentication
+   Login + Signup
+   ========================================================= */
+
+.login-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--bg-deep);
+}
+
+.login-card {
+  width: min(430px, 100%);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 34px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.35);
+}
+
+.login-brand {
+  color: #ffffff;
+  padding: 0 0 22px;
+}
+
+.login-card h1 {
+  margin: 0;
+  font-size: 28px;
+  color: #ffffff;
+}
+
+.login-form {
+  display: grid;
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.login-form label {
+  display: grid;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #dce6ed;
+}
+
+.login-form input {
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  padding: 11px 12px;
+  outline: none;
+  background: #071b2c;
+  color: #ffffff;
+}
+
+.login-form input::placeholder {
+  color: #71879a;
+}
+
+.login-form input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+/* =========================================================
+   Authentication Pages
+   ========================================================= */
+
+.auth-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 20px;
+  background:
+    radial-gradient(
+      circle at top right,
+      #123957 0,
+      transparent 32%
+    ),
+    var(--bg-deep);
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 460px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 42px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.4);
+}
+
+.auth-brand {
+  margin-bottom: 28px;
+  padding: 0;
+  font-size: 28px;
+  font-weight: 800;
+  color: #ffffff;
+}
+
+.auth-brand span {
+  color: #60a5fa;
+}
+
+.auth-card h1 {
+  margin: 0;
+  color: #ffffff;
+  font-size: 30px;
+  line-height: 1.2;
+}
+
+.auth-subtitle {
+  margin: 10px 0 28px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.auth-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  color: #dce6ed;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.auth-form input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px 14px;
+  border: 1px solid var(--border-light);
+  border-radius: 9px;
+  background: #071b2c;
+  color: #ffffff;
+  font-size: 15px;
+  outline: none;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.auth-form input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.auth-form input::placeholder {
+  color: #71879a;
+}
+
+.auth-form .primary-button {
+  width: 100%;
+  margin-top: 4px;
+  padding: 13px 16px;
+  border: 0;
+  border-radius: 9px;
+  background: var(--accent);
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.auth-form .primary-button:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.auth-form .primary-button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.auth-form .primary-button:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.auth-form .form-error {
+  padding: 11px 13px;
+  border: 1px solid rgba(248, 113, 113, 0.35);
+  border-radius: 8px;
+  background: rgba(127, 29, 29, 0.35);
+  color: #fca5a5;
+  font-size: 14px;
+}
+
+.auth-footer {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  text-align: center;
+  font-size: 14px;
+}
+
+.auth-footer a {
+  color: #60a5fa;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.auth-footer a:hover {
+  text-decoration: underline;
+}
+
+/* =========================================================
+   Financial Status Colours
+   ========================================================= */
+
+.text-success {
+  color: var(--success);
+}
+
+.text-warning {
+  color: var(--warning);
+}
+
+.text-danger {
+  color: var(--danger);
+}
+
+/* =========================================================
+   Responsive Layout
+   ========================================================= */
+
+@media (max-width: 1000px) {
+  .sidebar {
+    width: 210px;
+  }
+
+  .main {
+    margin-left: 210px;
+    width: calc(100% - 210px);
+  }
+
+  .grid-4,
+  .action-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 700px) {
+  .sidebar {
+    display: none;
+  }
+
+  .main {
+    margin: 0;
+    width: 100%;
+  }
+
+  .grid-4,
+  .grid-2,
+  .action-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .content {
+    padding: 20px;
+  }
+
+  .topbar {
+    padding: 0 20px;
+  }
+}
+
+@media (max-width: 520px) {
+  .auth-page {
+    padding: 20px 14px;
+  }
+
+  .auth-card {
+    padding: 30px 24px;
+    border-radius: 14px;
+  }
+
+  .auth-card h1 {
+    font-size: 26px;
+  }
+}
+
+/* Banking form alignment */
+
+.form-card {
+  width: 100%;
+  max-width: 900px;
+  margin-left: 0;
+  margin-right: auto;
+}
+
+.form-card form {
+  width: 100%;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 22px 24px;
+  width: 100%;
+}
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.form-field label {
+  display: block;
+  margin: 0;
+  font-weight: 600;
+}
+
+.form-field input,
+.form-field select {
+  width: 100%;
+  min-height: 44px;
+  box-sizing: border-box;
+}
+
+.field-help {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+.form-notice {
+  margin-top: 28px;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.form-notice strong {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.form-notice p {
+  margin: 0;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.form-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 28px;
+}
+
+@media (max-width: 760px) {
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .form-card {
+    max-width: 100%;
+  }
+
+  .form-actions {
+    justify-content: stretch;
+  }
+
+  .form-actions a,
+  .form-actions button {
+    flex: 1;
+  }
+}
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\src\app\layout.tsx
+============================================================
+import "./globals.css";
+export const metadata={title:"FirmLedger",description:"Financial management for modern law firms"};
+export default function RootLayout({children}:{children:React.ReactNode}){return <html lang="en-ZA"><body>{children}</body></html>}
+
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\src\app\logout-button.tsx
+============================================================
+"use client";
+
+export default function LogoutButton() {
+  async function logout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    window.location.href = "/login";
+  }
+  return <button className="logout-button" onClick={logout}>Sign out</button>;
+}
+
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\src\app\page.tsx
+============================================================
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import { prisma } from "@/lib/prisma";
+import { requireUser } from "@/lib/permissions";
+import LogoutButton from "@/app/logout-button";
+
+const nav=[['Overview','/'],['Clients','/clients'],['Matters','/matters'],['Billing','/billing'],['Payments','/payments'],['Expenses','/expenses'],['Banking','/banking'],['Accounting','/accounting'],['Reports','/reports'],['Audit Trail','/audit'],['Suppliers','/suppliers'],['Purchase invoices','/purchases'],['Trust accounting','/trust'],['VAT / Tax','/tax'],['Financial periods','/periods'],['Recurring billing','/recurring'],['Credit notes','/credit-notes']];
+export default async function Home(){
+  const user=await requireUser();
+  const [invoiceAgg, paidAgg, expenseAgg, outstanding] = await Promise.all([
+    prisma.invoice.aggregate({where:{firmId:user.firmId,status:{not:"VOID"}},_sum:{total:true}}),
+    prisma.payment.aggregate({where:{firmId:user.firmId,status:"COMPLETED"},_sum:{amount:true}}),
+    prisma.expense.aggregate({where:{firmId:user.firmId},_sum:{amount:true}}),
+    prisma.invoice.aggregate({where:{firmId:user.firmId,status:{in:["SENT","PARTIALLY_PAID","OVERDUE"]}},_sum:{balanceDue:true}})
+  ]);
+  const money=(n:unknown)=>`R${Number(n??0).toFixed(2)}`;
+  return <div className="shell"><aside className="sidebar"><div className="brand">Firm<span>Ledger</span></div>{nav.map(([label,href])=><Link className={`nav-link ${href==='/'?'active':''}`} key={href} href={href}>{label}</Link>)}<div className="nav-section">Administration</div><Link className="nav-link" href="/settings">Settings</Link></aside><main className="main"><header className="topbar"><strong>{user.firm.name}</strong><div style={{display:"flex",alignItems:"center",gap:14}}><span className="metric-label">{user.name} Â· {user.role}</span><LogoutButton/></div></header><section className="content"><h1 className="page-title">Good morning</h1><p className="page-subtitle">A simple financial view of your firm.</p><div className="grid grid-4" style={{marginTop:26}}><Metric label="Revenue / billed" value={money(invoiceAgg._sum.total)}/><Metric label="Outstanding invoices" value={money(outstanding._sum.balanceDue)}/><Metric label="Payments received" value={money(paidAgg._sum.amount)}/><Metric label="Expenses" value={money(expenseAgg._sum.amount)}/></div><div className="card" style={{marginTop:22}}><div className="section-title">Quick actions</div><div className="action-grid"><Action href="/billing/new" title="New invoice" text="Create an invoice for a client or matter."/><Action href="/expenses/new" title="Record expense" text="Capture a firm expense or disbursement."/><Action href="/payments/new" title="Record payment" text="Record money received from a client."/><Action href="/banking/reconciliation" title="Reconcile bank" text="Match bank activity to transactions."/></div></div><div className="grid grid-2" style={{marginTop:22}}><div className="card"><div className="section-title">FirmLedger workflow</div><p className="page-subtitle">Clients â†’ Matters â†’ Billing â†’ Payments â†’ Bank reconciliation â†’ Accountant review â†’ Month-end close â†’ Reports.</p></div><div className="card"><div className="section-title">Current user</div><p className="page-subtitle">You are signed in as <strong>{user.role}</strong>. Permissions will control each financial action as the platform grows.</p></div></div></section></main></div>
+}
+function Metric({label,value}:{label:string;value:string}){return <div className="card"><div className="metric-label">{label}</div><div className="metric-value">{value}</div></div>}
+function Action({href,title,text}:{href:string,title:string,text:string}){return <Link className="action" href={href}><strong>{title}</strong><div className="metric-label" style={{marginTop:7}}>{text}</div></Link>}
+
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\src\app\accounting\page.tsx
+============================================================
+import Link from "next/link";
+import { requireRole } from "@/lib/permissions";
+import { prisma } from "@/lib/prisma";
+import { reviewItem } from "@/app/actions";
+
+export default async function AccountingPage() {
+  const user = await requireRole(["OWNER", "ADMIN", "FINANCE", "ACCOUNTANT"]);
+  const [entries, reviews] = await Promise.all([
+    prisma.journalEntry.findMany({ where: { firmId: user.firmId }, include: { lines: { include: { ledgerAccount: true } } }, orderBy: { entryDate: "desc" }, take: 30 }),
+    prisma.accountantReview.findMany({ where: { firmId: user.firmId, status: "PENDING" }, orderBy: { createdAt: "desc" }, take: 20 })
+  ]);
+  return <div className="shell"><aside className="sidebar"><div className="brand">Firm<span>Ledger</span></div><Link className="nav-link" href="/">â† Dashboard</Link><Link className="nav-link active" href="/accounting">Accounting</Link><Link className="nav-link" href="/banking">Banking</Link><Link className="nav-link" href="/reports">Reports</Link></aside><main className="main"><header className="topbar"><strong>Accounting workspace</strong></header><section className="content"><h1 className="page-title">Accounting</h1><p className="page-subtitle">Double-entry journal activity and items awaiting accountant review.</p><div className="grid grid-2" style={{marginTop:24}}><div className="card"><div className="section-title">Pending review</div>{reviews.length?reviews.map(r=><div key={r.id} style={{padding:"10px 0",borderBottom:"1px solid var(--border)"}}><strong>{r.title}</strong><div className="metric-label">{r.notes||"No notes"}</div><form action={reviewItem} style={{display:"flex",gap:8,marginTop:8}}><input type="hidden" name="reviewId" value={r.id}/><button className="primary-button" name="status" value="REVIEWED" type="submit">Approve</button><button className="logout-button" name="status" value="FLAGGED" type="submit">Flag</button></form></div>):<p className="page-subtitle">Nothing is waiting for review.</p>}</div><div className="card"><div className="section-title">Posting rules</div><p className="page-subtitle">Invoices: Dr Accounts Receivable, Cr Legal Fees and VAT Control.</p><p className="page-subtitle">Client receipts: Dr Bank, Cr Accounts Receivable.</p><p className="page-subtitle">Every system-generated journal is balanced before it is saved.</p></div></div><div className="card" style={{marginTop:24}}><div className="section-title">Recent journal entries</div><table className="table"><thead><tr><th>Date</th><th>Description</th><th>Source</th><th>Debit</th><th>Credit</th></tr></thead><tbody>{entries.map(e=>{const debit=e.lines.reduce((s,l)=>s+Number(l.debit),0);const credit=e.lines.reduce((s,l)=>s+Number(l.credit),0);return <tr key={e.id}><td>{e.entryDate.toLocaleDateString("en-ZA")}</td><td>{e.description}</td><td>{e.sourceType||"â€”"}</td><td>R{debit.toFixed(2)}</td><td>R{credit.toFixed(2)}</td></tr>})}</tbody></table></div></section></main></div>
+}
+
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\src\app\api\auth\login\route.ts
+============================================================
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import {
+  makeSession,
+  ve

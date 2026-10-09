@@ -1,0 +1,560 @@
+﻿ firmId: user.firmId,
+        },
+      });
+
+    if (!matter) {
+      throw new Error(
+        "Matter not found.",
+      );
+    }
+  }
+
+  const total =
+    Math.round((net + tax) * 100) / 100;
+
+  const date = new Date();
+
+  const due = new Date(date);
+  due.setDate(
+    due.getDate() + 30,
+  );
+
+  const pi =
+    await prisma.$transaction(
+      async (tx) => {
+        const created =
+          await tx.purchaseInvoice.create({
+            data: {
+              firmId: user.firmId,
+              supplierId,
+              matterId,
+              invoiceNumber,
+              invoiceDate: date,
+              dueDate: due,
+              status: "RECEIVED",
+              subtotal: net,
+              taxAmount: tax,
+              total,
+              amountPaid: 0,
+              balanceDue: total,
+              description,
+            },
+          });
+
+        await postPurchaseInvoice(tx, {
+          firmId: user.firmId,
+          id: created.id,
+          description: `${supplier.name} ${invoiceNumber}`,
+          date,
+          net,
+          tax,
+        });
+
+        await tx.accountantReview.create({
+          data: {
+            firmId: user.firmId,
+            title: `Review supplier invoice ${invoiceNumber}`,
+            status: "PENDING",
+            notes: `R${total.toFixed(
+              2,
+            )} payable to ${supplier.name}.`,
+          },
+        });
+
+        return created;
+      },
+    );
+
+  await audit({
+    firmId: user.firmId,
+    userId: user.id,
+    action: "CREATE_AND_POST",
+    entity: "PurchaseInvoice",
+    entityId: pi.id,
+    metadata: {
+      total,
+    },
+  });
+
+  revalidatePath("/purchases");
+  revalidatePath("/accounting");
+  revalidatePath("/reports");
+
+  redirect("/purchases");
+}
+
+export async function createTrustAccount(
+  formData: FormData,
+) {
+  const user = await requireRole([
+    "OWNER",
+    "ADMIN",
+    "FINANCE",
+    "ACCOUNTANT",
+  ]);
+
+  const name = String(
+    formData.get("name") || "",
+  ).trim();
+
+  if (!name) {
+    throw new Error(
+      "Trust account name is required.",
+    );
+  }
+
+  const account =
+    await prisma.trustAccount.create({
+      data: {
+        firmId: user.firmId,
+        name,
+        bankName:
+          String(
+            formData.get("bankName") || "",
+          ).trim() || null,
+        accountNumber:
+          String(
+            formData.get("accountNumber") || "",
+          ).trim() || null,
+      },
+    });
+
+  await audit({
+    firmId: user.firmId,
+    userId: user.id,
+    action: "CREATE",
+    entity: "TrustAccount",
+    entityId: account.id,
+  });
+
+  revalidatePath("/trust");
+  redirect("/trust");
+}
+
+export async function createTrustTransaction(
+  formData: FormData,
+) {
+  const user = await requireRole([
+    "OWNER",
+    "ADMIN",
+    "FINANCE",
+    "ACCOUNTANT",
+  ]);
+
+  const trustAccountId = String(
+    formData.get("trustAccountId") || "",
+  );
+
+  const clientId = String(
+    formData.get("clientId") || "",
+  );
+
+  const matterId =
+    String(
+      formData.get("matterId") || "",
+    ) || null;
+
+  const amount = money(
+    String(
+      formData.get("amount") || "0",
+    ),
+  );
+
+  const type = String(
+    formData.get("type") || "RECEIPT",
+  );
+
+  const description = String(
+    formData.get("description") || "",
+  ).trim();
+
+  const reference =
+    String(
+      formData.get("reference") || "",
+    ).trim() || null;
+
+  if (
+    !trustAccountId ||
+    !clientId ||
+    !description ||
+    amount <= 0 ||
+    ![
+      "RECEIPT",
+      "PAYMENT",
+      "TRANSFER",
+      "INTEREST",
+      "FEE",
+      "REVERSAL",
+    ].includes(type)
+  ) {
+    throw new Error(
+      "Trust account, client, description and valid amount are required.",
+    );
+  }
+
+  const ta =
+    await prisma.trustAccount.findFirst({
+      where: {
+        id: trustAccountId,
+        firmId: user.firmId,
+        active: true,
+      },
+    });
+
+  if (!ta) {
+    throw new Error(
+      "Trust account not found.",
+    );
+  }
+
+  const client =
+    await prisma.client.findFirst({
+      where: {
+        id: clientId,
+        firmId: user.firmId,
+      },
+    });
+
+  if (!client) {
+    throw new Error(
+      "Client not found.",
+    );
+  }
+
+  if (matterId) {
+    const matter =
+      await prisma.matter.findFirst({
+        where: {
+          id: matterId,
+          firmId: user.firmId,
+          clientId,
+        },
+      });
+
+    if (!matter) {
+      throw new Error(
+        "Matter does not belong to the client.",
+      );
+    }
+  }
+
+  const current =
+    await prisma.trustTransaction.findMany({
+      where: {
+        trustAccountId,
+        status: "POSTED",
+      },
+      select: {
+        amount: true,
+        type: true,
+      },
+    });
+
+  const balance =
+    current.reduce(
+      (s, t) =>
+        s +
+        (t.type === "RECEIPT" ||
+        t.type === "INTEREST"
+          ? Number(t.amount)
+          : -Number(t.amount)),
+      0,
+    );
+
+  if (
+    [
+      "PAYMENT",
+      "TRANSFER",
+      "FEE",
+    ].includes(type) &&
+    amount > balance + 0.001
+  ) {
+    throw new Error(
+      `Insufficient trust funds. Available balance: R${balance.toFixed(
+        2,
+      )}.`,
+    );
+  }
+
+  const tx =
+    await prisma.trustTransaction.create({
+      data: {
+        firmId: user.firmId,
+        trustAccountId,
+        clientId,
+        matterId,
+        type: type as any,
+        status: "POSTED",
+        transactionDate: new Date(),
+        reference,
+        description,
+        amount,
+        createdById: user.id,
+      },
+    });
+
+  await audit({
+    firmId: user.firmId,
+    userId: user.id,
+    action: "POST",
+    entity: "TrustTransaction",
+    entityId: tx.id,
+    metadata: {
+      amount,
+      type,
+      clientId,
+      matterId,
+    },
+  });
+
+  revalidatePath("/trust");
+  redirect("/trust");
+}
+
+export async function createFinancialPeriod(
+  formData: FormData,
+) {
+  const user = await requireRole([
+    "OWNER",
+    "ADMIN",
+    "FINANCE",
+    "ACCOUNTANT",
+  ]);
+
+  const name = String(
+    formData.get("name") || "",
+  ).trim();
+
+  const start = new Date(
+    String(
+      formData.get("startDate") || "",
+    ),
+  );
+
+  const end = new Date(
+    String(
+      formData.get("endDate") || "",
+    ),
+  );
+
+  if (
+    !name ||
+    isNaN(start.getTime()) ||
+    isNaN(end.getTime()) ||
+    start >= end
+  ) {
+    throw new Error(
+      "Valid period dates are required.",
+    );
+  }
+
+  const period =
+    await prisma.financialPeriod.create({
+      data: {
+        firmId: user.firmId,
+        name,
+        startDate: start,
+        endDate: end,
+      },
+    });
+
+  await audit({
+    firmId: user.firmId,
+    userId: user.id,
+    action: "CREATE",
+    entity: "FinancialPeriod",
+    entityId: period.id,
+  });
+
+  revalidatePath("/periods");
+  redirect("/periods");
+}
+
+export async function closeFinancialPeriod(
+  formData: FormData,
+) {
+  const user = await requireRole([
+    "OWNER",
+    "ADMIN",
+    "ACCOUNTANT",
+  ]);
+
+  const periodId = String(
+    formData.get("periodId") || "",
+  );
+
+  const period =
+    await prisma.financialPeriod.findFirst({
+      where: {
+        id: periodId,
+        firmId: user.firmId,
+      },
+    });
+
+  if (!period) {
+    throw new Error(
+      "Period not found.",
+    );
+  }
+
+  const pending =
+    await prisma.accountantReview.count({
+      where: {
+        firmId: user.firmId,
+        periodId,
+        status: "PENDING",
+      },
+    });
+
+  if (pending) {
+    throw new Error(
+      `Cannot close the period while ${pending} review item(s) remain pending.`,
+    );
+  }
+
+  await prisma.financialPeriod.update({
+    where: {
+      id: period.id,
+    },
+    data: {
+      status: "CLOSED",
+      closedAt: new Date(),
+      closedBy: user.id,
+    },
+  });
+
+  await audit({
+    firmId: user.firmId,
+    userId: user.id,
+    action: "CLOSE",
+    entity: "FinancialPeriod",
+    entityId: period.id,
+  });
+
+  revalidatePath("/periods");
+  redirect("/periods");
+}
+
+export async function createTaxReturn(
+  formData: FormData,
+) {
+  const user = await requireRole([
+    "OWNER",
+    "ADMIN",
+    "FINANCE",
+    "ACCOUNTANT",
+  ]);
+
+  const start = new Date(
+    String(
+      formData.get("periodStart") || "",
+    ),
+  );
+
+  const end = new Date(
+    String(
+      formData.get("periodEnd") || "",
+    ),
+  );
+
+  if (
+    isNaN(start.getTime()) ||
+    isNaN(end.getTime()) ||
+    start >= end
+  ) {
+    throw new Error(
+      "Valid tax period required.",
+    );
+  }
+
+  const lines =
+    await prisma.journalLine.findMany({
+      where: {
+        journalEntry: {
+          firmId: user.firmId,
+          entryDate: {
+            gte: start,
+            lte: end,
+          },
+        },
+      },
+      include: {
+        ledgerAccount: true,
+      },
+    });
+
+  const output = lines
+    .filter(
+      (l) =>
+        l.ledgerAccount.code === "2000",
+    )
+    .reduce(
+      (s, l) =>
+        s +
+        Number(l.credit) -
+        Number(l.debit),
+      0,
+    );
+
+  const input = lines
+    .filter(
+      (l) =>
+        l.ledgerAccount.code === "2100",
+    )
+    .reduce(
+      (s, l) =>
+        s +
+        Number(l.debit) -
+        Number(l.credit),
+      0,
+    );
+
+  const ret =
+    await prisma.taxReturn.create({
+      data: {
+        firmId: user.firmId,
+        returnType: String(
+          formData.get("returnType") ||
+            "VAT201",
+        ),
+        periodStart: start,
+        periodEnd: end,
+        outputVat: output,
+        inputVat: input,
+        netVat: output - input,
+        status: "PREPARED",
+        preparedBy: user.id,
+        preparedAt: new Date(),
+      },
+    });
+
+  await audit({
+    firmId: user.firmId,
+    userId: user.id,
+    action: "PREPARE",
+    entity: "TaxReturn",
+    entityId: ret.id,
+    metadata: {
+      output,
+      input,
+      net: output - input,
+    },
+  });
+
+  revalidatePath("/tax");
+  redirect("/tax");
+}
+
+export async function createRecurringInvoice(
+  formData: FormData,
+) {
+  const user = await requireRole([
+    "OWNER",
+    "ADMIN",
+    "FINANCE",
+    "LAWYER",
+    "ACCOUNTANT",
+  ]);
+
+  const clientId = String(
+    formData.get(

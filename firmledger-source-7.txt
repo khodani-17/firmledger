@@ -1,0 +1,697 @@
+﻿{s.name}</option>)}</select></label><label>Supplier invoice number<input name="invoiceNumber" required/></label><label>Description<input name="description" required/></label><label>Matter (optional)<select name="matterId"><option value="">Firm expense</option>{matters.map(m=><option key={m.id} value={m.id}>{m.matterNumber} Â· {m.client.displayName}</option>)}</select></label><label>Subtotal<input name="subtotal" type="number" min="0.01" step="0.01" required/></label><label>Input VAT<input name="taxAmount" type="number" min="0" step="0.01" defaultValue="0"/></label><div><button className="primary-button" type="submit">Post purchase invoice</button></div></form></section></main></div>}
+
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\src\app\purchases\pay\page.tsx
+============================================================
+import Link from "next/link"; import {createSupplierPayment} from "@/app/actions"; import {requireRole} from "@/lib/permissions"; import {prisma} from "@/lib/prisma";
+export default async function PayPurchase(){const u=await requireRole(["OWNER","ADMIN","FINANCE","ACCOUNTANT"]);const [suppliers,invoices,banks]=await Promise.all([prisma.supplier.findMany({where:{firmId:u.firmId,active:true},orderBy:{name:"asc"}}),prisma.purchaseInvoice.findMany({where:{firmId:u.firmId,balanceDue:{gt:0},status:{not:"VOID"}},include:{supplier:true},orderBy:{dueDate:"asc"}}),prisma.bankAccount.findMany({where:{firmId:u.firmId,active:true,isTrust:false},orderBy:{name:"asc"}})]);return <div className="shell"><aside className="sidebar"><div className="brand">Firm<span>Ledger</span></div><Link className="nav-link" href="/purchases">â† Purchase invoices</Link></aside><main className="main"><section className="content"><h1 className="page-title">Pay supplier</h1><form action={createSupplierPayment} className="card form-grid"><label>Supplier<select name="supplierId" required><option value="">Select supplier</option>{suppliers.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></label><label>Purchase invoice<select name="purchaseInvoiceId"><option value="">Unallocated supplier payment</option>{invoices.map(i=><option key={i.id} value={i.id}>{i.invoiceNumber} Â· {i.supplier.name} Â· R{Number(i.balanceDue).toFixed(2)}</option>)}</select></label><label>Business bank<select name="bankAccountId" required><option value="">Select bank</option>{banks.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}</select></label><label>Amount<input name="amount" type="number" min="0.01" step="0.01" required/></label><label>Reference<input name="reference" required/></label><button className="primary-button">Post supplier payment</button></form></section></main></div>}
+
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\src\app\recurring\page.tsx
+============================================================
+import Link from "next/link"; import {requireRole} from "@/lib/permissions"; import {prisma} from "@/lib/prisma";
+export default async function Recurring(){const u=await requireRole(["OWNER","ADMIN","FINANCE","LAWYER","ACCOUNTANT"]);const rows=await prisma.recurringInvoice.findMany({where:{firmId:u.firmId},include:{client:true,matter:true},orderBy:{nextRunDate:"asc"}});return <div className="shell"><aside className="sidebar"><div className="brand">Firm<span>Ledger</span></div><Link className="nav-link" href="/">â† Dashboard</Link><Link className="nav-link active" href="/recurring">Recurring billing</Link><Link className="nav-link" href="/billing">Invoices</Link></aside><main className="main"><section className="content"><div className="page-heading"><div><h1 className="page-title">Recurring billing</h1><p className="page-subtitle">Scheduled client billing templates.</p></div><Link className="primary-button" href="/recurring/new">New recurring schedule</Link></div><div className="card" style={{marginTop:24}}><table className="table"><thead><tr><th>Client</th><th>Description</th><th>Frequency</th><th>Next run</th><th>Amount</th><th>Status</th></tr></thead><tbody>{rows.map(r=><tr key={r.id}><td>{r.client.displayName}</td><td>{r.description}</td><td>{r.frequency}</td><td>{r.nextRunDate.toLocaleDateString("en-ZA")}</td><td>R{Number(r.subtotal).toFixed(2)} + VAT</td><td><span className="badge">{r.active?"Active":"Paused"}</span></td></tr>)}</tbody></table></div></section></main></div>}
+
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\src\app\recurring\new\page.tsx
+============================================================
+import Link from "next/link"; import {createRecurringInvoice} from "@/app/actions"; import {requireRole} from "@/lib/permissions"; import {prisma} from "@/lib/prisma";
+export default async function NewRecurring(){const u=await requireRole(["OWNER","ADMIN","FINANCE","LAWYER","ACCOUNTANT"]);const [clients,matters]=await Promise.all([prisma.client.findMany({where:{firmId:u.firmId,active:true},orderBy:{displayName:"asc"}}),prisma.matter.findMany({where:{firmId:u.firmId,status:{not:"ARCHIVED"}},include:{client:true},orderBy:{matterNumber:"desc"}})]);return <div className="shell"><aside className="sidebar"><div className="brand">Firm<span>Ledger</span></div><Link className="nav-link" href="/recurring">â† Recurring billing</Link></aside><main className="main"><section className="content"><h1 className="page-title">New recurring billing schedule</h1><form action={createRecurringInvoice} className="card form-grid"><label>Client<select name="clientId" required><option value="">Select client</option>{clients.map(c=><option key={c.id} value={c.id}>{c.displayName}</option>)}</select></label><label>Matter<select name="matterId"><option value="">No matter</option>{matters.map(m=><option key={m.id} value={m.id}>{m.matterNumber} Â· {m.client.displayName}</option>)}</select></label><label>Description<input name="description" required/></label><label>Subtotal<input name="subtotal" type="number" min="0.01" step="0.01" required/></label><label>VAT rate (%)<input name="taxRate" type="number" min="0" step="0.01" defaultValue="15"/></label><label>Frequency<select name="frequency"><option>MONTHLY</option><option>WEEKLY</option><option>QUARTERLY</option><option>ANNUALLY</option></select></label><label>First run date<input name="nextRunDate" type="date" required/></label><button className="primary-button">Save schedule</button></form></section></main></div>}
+
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\src\app\reports\page.tsx
+============================================================
+import Link from "next/link";
+import { requireRole } from "@/lib/permissions";
+import { prisma } from "@/lib/prisma";
+
+export default async function Reports() {
+  const u = await requireRole([
+    "OWNER",
+    "ADMIN",
+    "FINANCE",
+    "ACCOUNTANT",
+  ]);
+
+  const [lines, invoices, expenses, payments] = await Promise.all([
+    prisma.journalLine.findMany({
+      where: {
+        journalEntry: {
+          firmId: u.firmId,
+        },
+      },
+      include: {
+        ledgerAccount: true,
+        journalEntry: true,
+      },
+    }),
+
+    prisma.invoice.findMany({
+      where: {
+        firmId: u.firmId,
+      },
+      select: {
+        total: true,
+        amountPaid: true,
+        balanceDue: true,
+      },
+    }),
+
+    prisma.expense.findMany({
+      where: {
+        firmId: u.firmId,
+        status: {
+          not: "REJECTED",
+        },
+      },
+      select: {
+        amount: true,
+        taxAmount: true,
+      },
+    }),
+
+    prisma.payment.findMany({
+      where: {
+        firmId: u.firmId,
+        status: "COMPLETED",
+      },
+      select: {
+        amount: true,
+      },
+    }),
+  ]);
+
+  const accountTotals = new Map<
+    string,
+    {
+      name: string;
+      debit: number;
+      credit: number;
+      type: string;
+    }
+  >();
+
+  for (const l of lines) {
+    const current = accountTotals.get(l.ledgerAccountId) || {
+      name: l.ledgerAccount.name,
+      debit: 0,
+      credit: 0,
+      type: l.ledgerAccount.accountType ?? "",
+    };
+
+    current.debit += Number(l.debit);
+    current.credit += Number(l.credit);
+
+    accountTotals.set(l.ledgerAccountId, current);
+  }
+
+  const revenue = [...accountTotals.values()]
+    .filter((a) => a.type === "REVENUE")
+    .reduce((s, a) => s + a.credit - a.debit, 0);
+
+  const operatingExpenses = [...accountTotals.values()]
+    .filter((a) => a.type === "EXPENSE")
+    .reduce((s, a) => s + a.debit - a.credit, 0);
+
+  const receivables = invoices.reduce(
+    (s, i) => s + Number(i.balanceDue),
+    0
+  );
+
+  const receipts = payments.reduce(
+    (s, p) => s + Number(p.amount),
+    0
+  );
+
+  const expensesTotal = expenses.reduce(
+    (s, e) => s + Number(e.amount) + Number(e.taxAmount),
+    0
+  );
+
+  return (
+    <div className="shell">
+      <aside className="sidebar">
+        <div className="brand">
+          Firm<span>Ledger</span>
+        </div>
+
+        <Link className="nav-link" href="/">
+          â† Dashboard
+        </Link>
+
+        <Link className="nav-link active" href="/reports">
+          Reports
+        </Link>
+
+        <Link className="nav-link" href="/accounting">
+          Accounting
+        </Link>
+      </aside>
+
+      <main className="main">
+        <header className="topbar">
+          <strong>{u.firm.name}</strong>
+        </header>
+
+        <section className="content">
+          <h1 className="page-title">Financial reports</h1>
+
+          <p className="page-subtitle">
+            Live management figures calculated from FirmLedger&apos;s posted
+            transactions.
+          </p>
+
+          <div className="grid grid-4" style={{ marginTop: 24 }}>
+            <div className="card">
+              <div className="metric-label">Revenue</div>
+              <div className="metric-value">
+                R{revenue.toFixed(2)}
+              </div>
+            </div>
+
+            <div className="card">
+              <div className="metric-label">Operating expenses</div>
+              <div className="metric-value">
+                R{operatingExpenses.toFixed(2)}
+              </div>
+            </div>
+
+            <div className="card">
+              <div className="metric-label">Net result</div>
+              <div className="metric-value">
+                R{(revenue - operatingExpenses).toFixed(2)}
+              </div>
+            </div>
+
+            <div className="card">
+              <div className="metric-label">Accounts receivable</div>
+              <div className="metric-value">
+                R{receivables.toFixed(2)}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-2" style={{ marginTop: 24 }}>
+            <div className="card">
+              <div className="section-title">Cash receipts</div>
+
+              <p className="page-subtitle">
+                Completed client payments recorded in FirmLedger.
+              </p>
+
+              <div className="metric-value">
+                R{receipts.toFixed(2)}
+              </div>
+            </div>
+
+            <div className="card">
+              <div className="section-title">
+                Expense cash outflow
+              </div>
+
+              <p className="page-subtitle">
+                Recorded paid expenses including input VAT.
+              </p>
+
+              <div className="metric-value">
+                R{expensesTotal.toFixed(2)}
+              </div>
+            </div>
+          </div>
+
+          <div className="card" style={{ marginTop: 24 }}>
+            <div className="section-title">Trial balance</div>
+
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Account</th>
+                  <th>Type</th>
+                  <th>Debit</th>
+                  <th>Credit</th>
+                  <th>Balance</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {[...accountTotals.values()]
+                  .sort((a, b) =>
+                    a.name.localeCompare(b.name)
+                  )
+                  .map((a) => {
+                    const balance = a.debit - a.credit;
+
+                    return (
+                      <tr key={a.name}>
+                        <td>{a.name}</td>
+
+                        <td>{a.type}</td>
+
+                        <td>
+                          R{a.debit.toFixed(2)}
+                        </td>
+
+                        <td>
+                          R{a.credit.toFixed(2)}
+                        </td>
+
+                        <td>
+                          R{Math.abs(balance).toFixed(2)}{" "}
+                          {balance >= 0 ? "Dr" : "Cr"}
+                        </td>
+                      </tr>
+                    );
+                  })}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+  );
+}
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\src\app\settings\page.tsx
+============================================================
+import Link from "next/link"; import {requireUser} from "@/lib/permissions";
+export default async function Page(){const u=await requireUser(); return <div className="shell"><aside className="sidebar"><div className="brand">Firm<span>Ledger</span></div><Link className="nav-link" href="/">â† Dashboard</Link><Link className="nav-link active" href="/settings">Settings</Link></aside><main className="main"><header className="topbar"><strong>{u.firm.name}</strong></header><section className="content"><h1 className="page-title">Settings</h1><p className="page-subtitle">This module is part of the FirmLedger foundation and will be implemented in the next accounting workflow phase.</p><div className="card" style={{marginTop:24}}><strong>Module foundation ready</strong><p className="page-subtitle">Tenant security and role checks are already applied before this area can be used.</p></div></section></main></div>}
+
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\src\app\signup\page.tsx
+============================================================
+"use client";
+
+import Link from "next/link";
+import { FormEvent, useState } from "react";
+import { useRouter } from "next/navigation";
+
+export default function SignupPage() {
+  const router = useRouter();
+
+  const [firmName, setFirmName] = useState("");
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+
+    const form = new FormData(event.currentTarget);
+
+    const firm = String(form.get("firmName") || "").trim();
+    const fullName = String(form.get("name") || "").trim();
+    const userEmail = String(form.get("email") || "").trim();
+    const userPassword = String(form.get("password") || "");
+    const userConfirmPassword = String(
+      form.get("confirmPassword") || ""
+    );
+
+    if (
+      !firm ||
+      !fullName ||
+      !userEmail ||
+      !userPassword ||
+      !userConfirmPassword
+    ) {
+      setError("Please complete all required fields.");
+      return;
+    }
+
+    if (userPassword !== userConfirmPassword) {
+      setError("Passwords do not match.");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const response = await fetch("/api/auth/signup", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          firmName: firm,
+          name: fullName,
+          email: userEmail,
+          password: userPassword,
+          confirmPassword: userConfirmPassword,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(data.error || "Unable to create account.");
+        setLoading(false);
+        return;
+      }
+
+      router.replace("/");
+      router.refresh();
+    } catch (error) {
+      console.error(error);
+      setError("Unable to create account. Please try again.");
+      setLoading(false);
+    }
+  }
+
+  return (
+    <main className="auth-page">
+      <div className="auth-card">
+        <div className="auth-brand">
+          Firm<span>Ledger</span>
+        </div>
+
+        <h1>Create your account</h1>
+
+        <p className="auth-subtitle">
+          Set up your law firm&apos;s financial workspace.
+        </p>
+
+        <form onSubmit={submit} className="auth-form">
+          <label htmlFor="signup-firm">
+            Firm name
+            <input
+              id="signup-firm"
+              name="firmName"
+              type="text"
+              placeholder="Maphorogo Attorneys"
+              autoComplete="organization"
+              required
+            />
+          </label>
+
+          <label htmlFor="signup-name">
+            Your name
+            <input
+              id="signup-name"
+              name="name"
+              type="text"
+              placeholder="Khodani Maphorogo"
+              autoComplete="name"
+              required
+            />
+          </label>
+
+          <label htmlFor="signup-email">
+            Email
+            <input
+              id="signup-email"
+              name="email"
+              type="email"
+              placeholder="you@example.com"
+              autoComplete="email"
+              required
+            />
+          </label>
+
+          <label htmlFor="signup-password">
+            Password
+            <input
+              id="signup-password"
+              name="password"
+              type="password"
+              placeholder="Create a password"
+              autoComplete="new-password"
+              minLength={8}
+              required
+            />
+          </label>
+
+          <label htmlFor="signup-confirm-password">
+            Confirm password
+            <input
+              id="signup-confirm-password"
+              name="confirmPassword"
+              type="password"
+              placeholder="Re-enter your password"
+              autoComplete="new-password"
+              minLength={8}
+              required
+            />
+          </label>
+
+          {error && <div className="form-error">{error}</div>}
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="primary-button"
+          >
+            {loading ? "Creating account..." : "Create account"}
+          </button>
+        </form>
+
+        <div className="auth-footer">
+          Already have an account?{" "}
+          <Link href="/login">Sign in</Link>
+        </div>
+      </div>
+    </main>
+  );
+}
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\src\app\suppliers\page.tsx
+============================================================
+import Link from "next/link"; import {requireRole} from "@/lib/permissions"; import {prisma} from "@/lib/prisma";
+export default async function Suppliers(){const u=await requireRole(["OWNER","ADMIN","FINANCE","ACCOUNTANT"]);const rows=await prisma.supplier.findMany({where:{firmId:u.firmId},orderBy:{name:"asc"}});return <Shell title="Suppliers" action={<Link className="primary-button" href="/suppliers/new">New supplier</Link>}><div className="card"><table className="table"><thead><tr><th>Code</th><th>Supplier</th><th>VAT number</th><th>Email</th><th>Status</th></tr></thead><tbody>{rows.map(s=><tr key={s.id}><td>{s.supplierCode}</td><td><strong>{s.name}</strong></td><td>{s.vatNumber||"â€”"}</td><td>{s.email||"â€”"}</td><td><span className="badge">{s.active?"Active":"Inactive"}</span></td></tr>)}</tbody></table></div></Shell>}
+function Shell({title,action,children}:{title:string;action:React.ReactNode;children:React.ReactNode}){return <div className="shell"><aside className="sidebar"><div className="brand">Firm<span>Ledger</span></div><Link className="nav-link" href="/">â† Dashboard</Link><Link className="nav-link active" href="/suppliers">Suppliers</Link><Link className="nav-link" href="/purchases">Purchase invoices</Link></aside><main className="main"><header className="topbar"><strong>Accounts payable</strong></header><section className="content"><div className="page-heading"><div><h1 className="page-title">{title}</h1><p className="page-subtitle">Suppliers and accounts payable records.</p></div>{action}</div><div style={{marginTop:24}}>{children}</div></section></main></div>}
+
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\src\app\suppliers\new\page.tsx
+============================================================
+import Link from "next/link"; import {createSupplier} from "@/app/actions"; import {requireRole} from "@/lib/permissions";
+export default async function NewSupplier(){await requireRole(["OWNER","ADMIN","FINANCE","ACCOUNTANT"]);return <div className="shell"><aside className="sidebar"><div className="brand">Firm<span>Ledger</span></div><Link className="nav-link" href="/suppliers">â† Suppliers</Link></aside><main className="main"><section className="content"><h1 className="page-title">New supplier</h1><form action={createSupplier} className="card form-grid"><label>Name<input name="name" required/></label><label>Type<select name="type"><option value="COMPANY">Company</option><option value="INDIVIDUAL">Individual</option><option value="OTHER">Other</option></select></label><label>VAT number<input name="vatNumber"/></label><label>Email<input name="email" type="email"/></label><label>Phone<input name="phone"/></label><div><button className="primary-button" type="submit">Save supplier</button></div></form></section></main></div>}
+
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\src\app\tax\page.tsx
+============================================================
+import Link from "next/link"; import {requireRole} from "@/lib/permissions"; import {prisma} from "@/lib/prisma"; import {createTaxReturn} from "@/app/actions";
+export default async function Tax(){const u=await requireRole(["OWNER","ADMIN","FINANCE","ACCOUNTANT"]);const rows=await prisma.taxReturn.findMany({where:{firmId:u.firmId},orderBy:{periodEnd:"desc"}});return <div className="shell"><aside className="sidebar"><div className="brand">Firm<span>Ledger</span></div><Link className="nav-link" href="/">â† Dashboard</Link><Link className="nav-link active" href="/tax">VAT / Tax</Link><Link className="nav-link" href="/reports">Reports</Link></aside><main className="main"><section className="content"><h1 className="page-title">VAT & tax workspace</h1><p className="page-subtitle">Prepare tax-period figures from posted accounting transactions. Submission remains under the firm's professional control.</p><form action={createTaxReturn} className="card form-grid" style={{marginTop:24}}><label>Return type<select name="returnType"><option>VAT201</option><option>Income Tax</option><option>Other</option></select></label><label>Period start<input name="periodStart" type="date" required/></label><label>Period end<input name="periodEnd" type="date" required/></label><button className="primary-button">Prepare return figures</button></form><div className="card" style={{marginTop:24}}><table className="table"><thead><tr><th>Return</th><th>Period</th><th>Output VAT</th><th>Input VAT</th><th>Net VAT</th><th>Status</th></tr></thead><tbody>{rows.map(r=><tr key={r.id}><td>{r.returnType}</td><td>{r.periodStart.toLocaleDateString("en-ZA")} â€“ {r.periodEnd.toLocaleDateString("en-ZA")}</td><td>R{Number(r.outputVat).toFixed(2)}</td><td>R{Number(r.inputVat).toFixed(2)}</td><td>R{Number(r.netVat).toFixed(2)}</td><td><span className="badge">{r.status}</span></td></tr>)}</tbody></table></div></section></main></div>}
+
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\src\app\trust\page.tsx
+============================================================
+import Link from "next/link";
+import { requireRole } from "@/lib/permissions";
+import { prisma } from "@/lib/prisma";
+
+export default async function Trust() {
+  const u = await requireRole([
+    "OWNER",
+    "ADMIN",
+    "FINANCE",
+    "ACCOUNTANT",
+  ]);
+
+  const [accounts, tx] = await Promise.all([
+    prisma.trustAccount.findMany({
+      where: {
+        firmId: u.firmId,
+      },
+      orderBy: {
+        name: "asc",
+      },
+    }),
+
+    prisma.trustTransaction.findMany({
+      where: {
+        firmId: u.firmId,
+        status: "POSTED",
+      },
+      include: {
+        client: true,
+        matter: true,
+        trustAccount: true,
+      },
+      orderBy: {
+        transactionDate: "desc",
+      },
+      take: 50,
+    }),
+  ]);
+
+  const balances = accounts.map((account) => {
+    const accountTransactions = tx.filter(
+      (transaction) =>
+        transaction.trustAccountId === account.id
+    );
+
+    return {
+      account,
+      balance: accountTransactions.reduce(
+        (sum, transaction) =>
+          sum +
+          (transaction.type === "RECEIPT" ||
+          transaction.type === "INTEREST"
+            ? Number(transaction.amount)
+            : -Number(transaction.amount)),
+        0
+      ),
+    };
+  });
+
+  return (
+    <div className="shell">
+      <aside className="sidebar">
+        <div className="brand">
+          Firm<span>Ledger</span>
+        </div>
+
+        <Link className="nav-link" href="/">
+          â† Dashboard
+        </Link>
+
+        <Link className="nav-link active" href="/trust">
+          Trust accounting
+        </Link>
+
+        <Link className="nav-link" href="/banking">
+          Business banking
+        </Link>
+      </aside>
+
+      <main className="main">
+        <section className="content">
+          <div className="page-heading">
+            <div>
+              <h1 className="page-title">
+                Trust accounting
+              </h1>
+
+              <p className="page-subtitle">
+                Separate client-money ledgers, balances and
+                controlled transactions.
+              </p>
+            </div>
+
+            <div style={{ display: "flex", gap: 8 }}>
+              <Link
+                className="secondary-button"
+                href="/trust/new"
+              >
+                New trust account
+              </Link>
+
+              <Link
+                className="primary-button"
+                href="/trust/new?transaction=1"
+              >
+                Record transaction
+              </Link>
+            </div>
+          </div>
+
+          <div
+            className="grid grid-3"
+            style={{ marginTop: 24 }}
+          >
+            {balances.map((item) => (
+              <div className="card" key={item.account.id}>
+                <div className="metric-label">
+                  {item.account.name}
+                </div>
+
+                <div className="metric-value">
+                  R{item.balance.toFixed(2)}
+                </div>
+
+                <div className="metric-label">
+                  Client trust balance
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div
+            className="card"
+            style={{ marginTop: 24 }}
+          >
+            <div className="section-title">
+              Recent trust transactions
+            </div>
+
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Account</th>
+                  <th>Client</th>
+                  <th>Matter</th>
+                  <th>Type</th>
+                  <th>Amount</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {tx.map((transaction) => (
+                  <tr key={transaction.id}>
+                    <td>
+                      {transaction.transactionDate.toLocaleDateString(
+                        "en-ZA"
+                      )}
+                    </td>
+
+                    <td>
+                      {transaction.trustAccount.name}
+                    </td>
+
+                    <td>
+                      {transaction.client?.displayName ?? "â€”"}
+                    </td>
+
+                    <td>
+                      {transaction.matter?.matterNumber ?? "â€”"}
+                    </td>
+
+                    <td>{transaction.type}</td>
+
+                    <td>
+                      R
+                      {Number(
+                        transaction.amount
+                      ).toFixed(2)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+  );
+}
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\src\app\trust\new\page.tsx
+============================================================
+import Link from "next/link"; import {createTrustAccount,createTrustTransaction} from "@/app/actions"; import {requireRole} from "@/lib/permissions"; import {prisma} from "@/lib/prisma";
+export default async function NewTrust({searchParams}:{searchParams:Promise<{transaction?:string}>}){const u=await requireRole(["OWNER","ADMIN","FINANCE","ACCOUNTANT"]);const [accounts,clients,matters]=await Promise.all([prisma.trustAccount.findMany({where:{firmId:u.firmId,active:true}}),prisma.client.findMany({where:{firmId:u.firmId,active:true},orderBy:{displayName:"asc"}}),prisma

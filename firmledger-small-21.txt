@@ -1,0 +1,221 @@
+﻿</td><td><strong>{s.name}</strong></td><td>{s.vatNumber||"â€”"}</td><td>{s.email||"â€”"}</td><td><span className="badge">{s.active?"Active":"Inactive"}</span></td></tr>)}</tbody></table></div></Shell>}
+function Shell({title,action,children}:{title:string;action:React.ReactNode;children:React.ReactNode}){return <div className="shell"><aside className="sidebar"><div className="brand">Firm<span>Ledger</span></div><Link className="nav-link" href="/">â† Dashboard</Link><Link className="nav-link active" href="/suppliers">Suppliers</Link><Link className="nav-link" href="/purchases">Purchase invoices</Link></aside><main className="main"><header className="topbar"><strong>Accounts payable</strong></header><section className="content"><div className="page-heading"><div><h1 className="page-title">{title}</h1><p className="page-subtitle">Suppliers and accounts payable records.</p></div>{action}</div><div style={{marginTop:24}}>{children}</div></section></main></div>}
+
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\src\app\suppliers\new\page.tsx
+============================================================
+import Link from "next/link"; import {createSupplier} from "@/app/actions"; import {requireRole} from "@/lib/permissions";
+export default async function NewSupplier(){await requireRole(["OWNER","ADMIN","FINANCE","ACCOUNTANT"]);return <div className="shell"><aside className="sidebar"><div className="brand">Firm<span>Ledger</span></div><Link className="nav-link" href="/suppliers">â† Suppliers</Link></aside><main className="main"><section className="content"><h1 className="page-title">New supplier</h1><form action={createSupplier} className="card form-grid"><label>Name<input name="name" required/></label><label>Type<select name="type"><option value="COMPANY">Company</option><option value="INDIVIDUAL">Individual</option><option value="OTHER">Other</option></select></label><label>VAT number<input name="vatNumber"/></label><label>Email<input name="email" type="email"/></label><label>Phone<input name="phone"/></label><div><button className="primary-button" type="submit">Save supplier</button></div></form></section></main></div>}
+
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\src\app\tax\page.tsx
+============================================================
+import Link from "next/link"; import {requireRole} from "@/lib/permissions"; import {prisma} from "@/lib/prisma"; import {createTaxReturn} from "@/app/actions";
+export default async function Tax(){const u=await requireRole(["OWNER","ADMIN","FINANCE","ACCOUNTANT"]);const rows=await prisma.taxReturn.findMany({where:{firmId:u.firmId},orderBy:{periodEnd:"desc"}});return <div className="shell"><aside className="sidebar"><div className="brand">Firm<span>Ledger</span></div><Link className="nav-link" href="/">â† Dashboard</Link><Link className="nav-link active" href="/tax">VAT / Tax</Link><Link className="nav-link" href="/reports">Reports</Link></aside><main className="main"><section className="content"><h1 className="page-title">VAT & tax workspace</h1><p className="page-subtitle">Prepare tax-period figures from posted accounting transactions. Submission remains under the firm's professional control.</p><form action={createTaxReturn} className="card form-grid" style={{marginTop:24}}><label>Return type<select name="returnType"><option>VAT201</option><option>Income Tax</option><option>Other</option></select></label><label>Period start<input name="periodStart" type="date" required/></label><label>Period end<input name="periodEnd" type="date" required/></label><button className="primary-button">Prepare return figures</button></form><div className="card" style={{marginTop:24}}><table className="table"><thead><tr><th>Return</th><th>Period</th><th>Output VAT</th><th>Input VAT</th><th>Net VAT</th><th>Status</th></tr></thead><tbody>{rows.map(r=><tr key={r.id}><td>{r.returnType}</td><td>{r.periodStart.toLocaleDateString("en-ZA")} â€“ {r.periodEnd.toLocaleDateString("en-ZA")}</td><td>R{Number(r.outputVat).toFixed(2)}</td><td>R{Number(r.inputVat).toFixed(2)}</td><td>R{Number(r.netVat).toFixed(2)}</td><td><span className="badge">{r.status}</span></td></tr>)}</tbody></table></div></section></main></div>}
+
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\src\app\trust\page.tsx
+============================================================
+import Link from "next/link";
+import { requireRole } from "@/lib/permissions";
+import { prisma } from "@/lib/prisma";
+
+export default async function Trust() {
+  const u = await requireRole([
+    "OWNER",
+    "ADMIN",
+    "FINANCE",
+    "ACCOUNTANT",
+  ]);
+
+  const [accounts, tx] = await Promise.all([
+    prisma.trustAccount.findMany({
+      where: {
+        firmId: u.firmId,
+      },
+      orderBy: {
+        name: "asc",
+      },
+    }),
+
+    prisma.trustTransaction.findMany({
+      where: {
+        firmId: u.firmId,
+        status: "POSTED",
+      },
+      include: {
+        client: true,
+        matter: true,
+        trustAccount: true,
+      },
+      orderBy: {
+        transactionDate: "desc",
+      },
+      take: 50,
+    }),
+  ]);
+
+  const balances = accounts.map((account) => {
+    const accountTransactions = tx.filter(
+      (transaction) =>
+        transaction.trustAccountId === account.id
+    );
+
+    return {
+      account,
+      balance: accountTransactions.reduce(
+        (sum, transaction) =>
+          sum +
+          (transaction.type === "RECEIPT" ||
+          transaction.type === "INTEREST"
+            ? Number(transaction.amount)
+            : -Number(transaction.amount)),
+        0
+      ),
+    };
+  });
+
+  return (
+    <div className="shell">
+      <aside className="sidebar">
+        <div className="brand">
+          Firm<span>Ledger</span>
+        </div>
+
+        <Link className="nav-link" href="/">
+          â† Dashboard
+        </Link>
+
+        <Link className="nav-link active" href="/trust">
+          Trust accounting
+        </Link>
+
+        <Link className="nav-link" href="/banking">
+          Business banking
+        </Link>
+      </aside>
+
+      <main className="main">
+        <section className="content">
+          <div className="page-heading">
+            <div>
+              <h1 className="page-title">
+                Trust accounting
+              </h1>
+
+              <p className="page-subtitle">
+                Separate client-money ledgers, balances and
+                controlled transactions.
+              </p>
+            </div>
+
+            <div style={{ display: "flex", gap: 8 }}>
+              <Link
+                className="secondary-button"
+                href="/trust/new"
+              >
+                New trust account
+              </Link>
+
+              <Link
+                className="primary-button"
+                href="/trust/new?transaction=1"
+              >
+                Record transaction
+              </Link>
+            </div>
+          </div>
+
+          <div
+            className="grid grid-3"
+            style={{ marginTop: 24 }}
+          >
+            {balances.map((item) => (
+              <div className="card" key={item.account.id}>
+                <div className="metric-label">
+                  {item.account.name}
+                </div>
+
+                <div className="metric-value">
+                  R{item.balance.toFixed(2)}
+                </div>
+
+                <div className="metric-label">
+                  Client trust balance
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div
+            className="card"
+            style={{ marginTop: 24 }}
+          >
+            <div className="section-title">
+              Recent trust transactions
+            </div>
+
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Account</th>
+                  <th>Client</th>
+                  <th>Matter</th>
+                  <th>Type</th>
+                  <th>Amount</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {tx.map((transaction) => (
+                  <tr key={transaction.id}>
+                    <td>
+                      {transaction.transactionDate.toLocaleDateString(
+                        "en-ZA"
+                      )}
+                    </td>
+
+                    <td>
+                      {transaction.trustAccount.name}
+                    </td>
+
+                    <td>
+                      {transaction.client?.displayName ?? "â€”"}
+                    </td>
+
+                    <td>
+                      {transaction.matter?.matterNumber ?? "â€”"}
+                    </td>
+
+                    <td>{transaction.type}</td>
+
+                    <td>
+                      R
+                      {Number(
+                        transaction.amount
+                      ).toFixed(2)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+  );
+}
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\src\app\trust\new\page.tsx
+============================================================
+import Link from "next/link"; import {createTrustAccount,createTrustTransaction} from "@/app/actions"; import {requireRole} from "@/lib/permissions"; import {prisma} from "@/lib/prisma";
+export default async function NewTrust({searchParams}:{searchParams:Promise<{transaction?:string}>}){const u=await requireRole(["OWNER","ADMIN","FINANCE","ACCOUNTANT"]);const [accounts,clients,matters]=await Promise.all([prisma.trustAccount.findMany({where:{firmId:u.firmId,active:true}}),prisma.client.findMany({where:{firmId:u.firmId,active:true},orderBy:{displayName:"asc"}}),prisma

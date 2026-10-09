@@ -1,0 +1,334 @@
+﻿.amount).toFixed(2)}</div>{t.type === "CREDIT" ? <form action={reconcileBankTransaction} style={{marginTop:10,display:"flex",gap:8}}><input type="hidden" name="bankTransactionId" value={t.id}/><select name="paymentId" required style={{flex:1}}><option value="">Select matching payment</option>{payments.filter(p=>Math.abs(Number(p.amount)-Number(t.amount))<0.001).map(p=><option key={p.id} value={p.id}>{p.invoice?.invoiceNumber||"Payment"} â€” {p.client?.displayName||"Client"} â€” R{Number(p.amount).toFixed(2)}</option>)}</select><button className="primary-button" type="submit">Match</button></form> : <span className="badge">Debit â€” manual review</span>}</div>) : <p className="page-subtitle">No unmatched transactions.</p>}</div></div>
+  </section></main></div>;
+}
+
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\src\app\billing\page.tsx
+============================================================
+import Link from "next/link";
+import { requireUser } from "@/lib/permissions";
+import { prisma } from "@/lib/prisma";
+
+export default async function BillingPage() {
+  const user = await requireUser();
+
+  const invoices = await prisma.invoice.findMany({
+    where: {
+      firmId: user.firmId,
+    },
+    include: {
+      client: true,
+      matter: true,
+    },
+    orderBy: {
+      issueDate: "desc",
+    },
+  });
+
+  return (
+    <Page
+      title="Billing"
+      subtitle="Invoices, balances and client billing."
+      action={
+        <Link className="primary-button" href="/billing/new">
+          New invoice
+        </Link>
+      }
+    >
+      <div className="card">
+        <table className="table">
+          <thead>
+            <tr>
+              <th>Invoice</th>
+              <th>Client</th>
+              <th>Matter</th>
+              <th>Status</th>
+              <th>Total</th>
+              <th>Balance</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {invoices.map((invoice) => (
+              <tr key={invoice.id}>
+                <td>
+                  <strong>{invoice.invoiceNumber}</strong>
+                  <br />
+                  <span className="metric-label">
+                    Due{" "}
+                    {invoice.dueDate
+                      ? invoice.dueDate.toLocaleDateString("en-ZA")
+                      : "â€”"}
+                  </span>
+                </td>
+
+                <td>{invoice.client?.displayName ?? "â€”"}</td>
+
+                <td>{invoice.matter?.matterNumber ?? "â€”"}</td>
+
+                <td>
+                  <span className="badge">{invoice.status}</span>
+                </td>
+
+                <td>R{Number(invoice.total).toFixed(2)}</td>
+
+                <td>R{Number(invoice.balanceDue).toFixed(2)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Page>
+  );
+}
+
+function Page({
+  title,
+  subtitle,
+  action,
+  children,
+}: {
+  title: string;
+  subtitle: string;
+  action: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="shell">
+      <aside className="sidebar">
+        <div className="brand">
+          Firm<span>Ledger</span>
+        </div>
+
+        <Link className="nav-link" href="/">
+          â† Dashboard
+        </Link>
+
+        <Link className="nav-link" href="/clients">
+          Clients
+        </Link>
+
+        <Link className="nav-link" href="/matters">
+          Matters
+        </Link>
+
+        <Link className="nav-link active" href="/billing">
+          Billing
+        </Link>
+      </aside>
+
+      <main className="main">
+        <header className="topbar">
+          <strong>Billing</strong>
+        </header>
+
+        <section className="content">
+          <div className="page-heading">
+            <div>
+              <h1 className="page-title">{title}</h1>
+              <p className="page-subtitle">{subtitle}</p>
+            </div>
+
+            {action}
+          </div>
+
+          <div style={{ marginTop: 24 }}>{children}</div>
+        </section>
+      </main>
+    </div>
+  );
+}
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\src\app\billing\new\page.tsx
+============================================================
+import { createInvoice } from "@/app/actions";
+import { requireRole } from "@/lib/permissions";
+import { prisma } from "@/lib/prisma";
+import SubmitInvoiceButton from "./submit-button";
+
+
+export default async function NewInvoice() {
+  const user = await requireRole([
+    "OWNER",
+    "ADMIN",
+    "FINANCE",
+    "LAWYER",
+    "ACCOUNTANT",
+  ]);
+
+  const clients = await prisma.client.findMany({
+    where: {
+      firmId: user.firmId,
+      active: true,
+    },
+    include: {
+      matters: {
+        where: {
+          status: {
+            in: ["OPEN", "ON_HOLD"],
+          },
+        },
+        orderBy: {
+          matterNumber: "asc",
+        },
+      },
+    },
+    orderBy: {
+      displayName: "asc",
+    },
+  });
+
+  return (
+    <div className="shell">
+      <aside className="sidebar">
+        <div className="brand">
+          Firm<span>Ledger</span>
+        </div>
+
+        <a className="nav-link" href="/billing">
+          â† Billing
+        </a>
+      </aside>
+
+      <main className="main">
+        <header className="topbar">
+          <strong>Billing</strong>
+        </header>
+
+        <section className="content">
+          <h1 className="page-title">New invoice</h1>
+
+          <p className="page-subtitle">
+            Issue a simple invoice without making the lawyer think like an
+            accountant.
+          </p>
+
+          <div className="card form-card">
+            <form action={createInvoice}>
+              <label>
+                Client
+
+                <select name="clientId" required>
+                  <option value="">Select client</option>
+
+                  {clients.map((client) => (
+                    <option key={client.id} value={client.id}>
+                      {client.displayName}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                Matter
+
+                <select name="matterId">
+                  <option value="">No matter</option>
+
+                  {clients.flatMap((client) =>
+                    client.matters.map((matter) => (
+                      <option key={matter.id} value={matter.id}>
+                        {client.displayName} â€” {matter.matterNumber} â€”{" "}
+                        {matter.title}
+                      </option>
+                    )),
+                  )}
+                </select>
+              </label>
+
+              <label>
+                Description
+
+                <input
+                  name="description"
+                  type="text"
+                  required
+                  placeholder="Professional legal services"
+                />
+              </label>
+
+              <label>
+                Amount before VAT
+
+                <input
+                  name="subtotal"
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  inputMode="decimal"
+                  required
+                />
+              </label>
+
+              <label>
+                VAT rate (%)
+
+                <input
+                  name="taxRate"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.01"
+                  inputMode="decimal"
+                  defaultValue="15"
+                  required
+                />
+              </label>
+
+              <button
+                type="submit"
+                className="primary-button"
+              >
+                Issue invoice
+              </button>
+            </form>
+          </div>
+        </section>
+      </main>
+    </div>
+  );
+}
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\src\app\billing\new\submit-button.tsx
+============================================================
+"use client";
+
+import { useFormStatus } from "react-dom";
+
+export default function SubmitInvoiceButton() {
+  const { pending } = useFormStatus();
+
+  return (
+    <button
+      type="submit"
+      className="primary-button"
+      disabled={pending}
+      aria-disabled={pending}
+    >
+      {pending ? "Issuing invoice..." : "Issue invoice"}
+    </button>
+  );
+}
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\src\app\clients\page.tsx
+============================================================
+import Link from "next/link";
+import { requireUser } from "@/lib/permissions";
+import { prisma } from "@/lib/prisma";
+
+export default async function ClientsPage() {
+  const user = await requireUser();
+  const clients = await prisma.client.findMany({ where: { firmId: user.firmId }, include: { _count: { select: { matters: true } } }, orderBy: { displayName: "asc" } });
+  return <Page title="Clients" subtitle="The people and organisations your firm acts for." action={<Link className="primary-button" href="/clients/new">New client</Link>}>
+    <div className="card"><table className="table"><thead><tr><th>Client</th><th>Code</th><th>Type</th><th>Matters</th><th>Contact</th></tr></thead><tbody>{clients.map(c=><tr key={c.id}><td><strong>{c.displayName}</strong></td><td>{c.clientCode}</td><td>{c.type}</td><td>{c._count.matters}</td><td>{c.email ?? c.phone ?? "â€”"}</td></tr>)}</tbody></table></div>
+  </Page>;
+}
+function Page({title,subtitle,action,children}:{title:string;subtitle:string;action:React.ReactNode;children:React.ReactNode}){return <div className="shell"><aside className="sidebar"><div className="brand">Firm<span>Ledger</span></div><Link className="nav-link" href="/">â† Dashboard</Link><Link className="nav-link active" href="/clients">Clients</Link><Link className="nav-link" href="/matters">Matters</Link><L

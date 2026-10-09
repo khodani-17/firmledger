@@ -1,0 +1,187 @@
+﻿lientCode}</option>)}</select></label>
+    <label>Matter (optional)<select name="matterId"><option value="">No matter</option>{matters.map(m=><option key={m.id} value={m.id}>{m.matterNumber} â€” {m.client.displayName} â€” {m.title}</option>)}</select></label>
+    <label>Net amount<input name="amount" type="number" min="0.01" step="0.01" required placeholder="0.00" /></label>
+    <label>Input VAT<input name="taxAmount" type="number" min="0" step="0.01" defaultValue="0" /></label>
+    <label>Paid from<select name="bankAccountId" required><option value="">Select bank account</option>{banks.map(b=><option key={b.id} value={b.id}>{b.name}{b.bankName ? ` â€” ${b.bankName}` : ""}</option>)}</select></label>
+    <label>Reference<input name="reference" placeholder="Supplier / EFT reference" /></label>
+    <button className="primary-button" type="submit">Post expense</button>
+  </form></div></section></main></div>;
+}
+
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\src\app\login\page.tsx
+============================================================
+"use client";
+
+import Link from "next/link";
+import { FormEvent, useState } from "react";
+import { useRouter } from "next/navigation";
+
+export default function LoginPage() {
+  const router = useRouter();
+
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    setError("");
+    setLoading(true);
+
+    try {
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email,
+          password,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(data.error || "Invalid email or password.");
+        setLoading(false);
+        return;
+      }
+
+      router.replace("/");
+      router.refresh();
+    } catch {
+      setError("Unable to sign in. Please try again.");
+      setLoading(false);
+    }
+  }
+
+  return (
+    <main className="auth-page">
+      <div className="auth-card">
+        <div className="auth-brand">
+          Firm<span>Ledger</span>
+        </div>
+
+        <h1>Sign in</h1>
+
+        <p className="auth-subtitle">
+          Financial management for modern law firms.
+        </p>
+
+        <form onSubmit={submit} className="auth-form">
+          <label htmlFor="login-email">
+            Email
+            <input
+              id="login-email"
+              name="email"
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder="you@example.com"
+              autoComplete="email"
+              required
+            />
+          </label>
+
+          <label htmlFor="login-password">
+            Password
+            <input
+              id="login-password"
+              name="password"
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder="Enter your password"
+              autoComplete="current-password"
+              required
+            />
+          </label>
+
+          {error && (
+            <div className="form-error">
+              {error}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="primary-button"
+          >
+            {loading ? "Signing in..." : "Sign in"}
+          </button>
+        </form>
+
+        <div className="auth-footer">
+          Don't have an account?{" "}
+          <Link href="/signup">
+            Create an account
+          </Link>
+        </div>
+      </div>
+    </main>
+  );
+}
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\src\app\matters\page.tsx
+============================================================
+import Link from "next/link";
+import { requireUser } from "@/lib/permissions";
+import { prisma } from "@/lib/prisma";
+export default async function MattersPage(){const user=await requireUser();const matters=await prisma.matter.findMany({where:{firmId:user.firmId},include:{client:true},orderBy:{matterNumber:"desc"}});return <Page title="Matters" subtitle="Every financial transaction can be linked back to a legal matter." action={<Link className="primary-button" href="/matters/new">New matter</Link>}><div className="card"><table className="table"><thead><tr><th>Matter</th><th>Client</th><th>Status</th><th>Opened</th></tr></thead><tbody>{matters.map(m=><tr key={m.id}><td><strong>{m.matterNumber}</strong><br/><span className="metric-label">{m.title}</span></td><td>{m.client.displayName}</td><td><span className="badge">{m.status}</span></td><td>{m.openedAt.toLocaleDateString("en-ZA")}</td></tr>)}</tbody></table></div></Page>}
+function Page({title,subtitle,action,children}:{title:string;subtitle:string;action:React.ReactNode;children:React.ReactNode}){return <div className="shell"><aside className="sidebar"><div className="brand">Firm<span>Ledger</span></div><Link className="nav-link" href="/">â† Dashboard</Link><Link className="nav-link" href="/clients">Clients</Link><Link className="nav-link active" href="/matters">Matters</Link><Link className="nav-link" href="/billing">Billing</Link></aside><main className="main"><header className="topbar"><strong>Matter management</strong></header><section className="content"><div className="page-heading"><div><h1 className="page-title">{title}</h1><p className="page-subtitle">{subtitle}</p></div>{action}</div><div style={{marginTop:24}}>{children}</div></section></main></div>}
+
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\src\app\matters\new\page.tsx
+============================================================
+import { createMatter } from "@/app/actions";
+import { requireRole } from "@/lib/permissions";
+import { prisma } from "@/lib/prisma";
+export default async function NewMatter(){ const user=await requireRole(["OWNER","ADMIN","FINANCE","LAWYER","STAFF"]); const clients=await prisma.client.findMany({where:{firmId:user.firmId,active:true},orderBy:{displayName:"asc"}}); return <div className="shell"><aside className="sidebar"><div className="brand">Firm<span>Ledger</span></div><a className="nav-link" href="/matters">â† Matters</a></aside><main className="main"><header className="topbar"><strong>Matter management</strong></header><section className="content"><h1 className="page-title">New matter</h1><p className="page-subtitle">Create a matter before billing or recording disbursements.</p><div className="card form-card"><form action={createMatter}><label>Client<select name="clientId" required><option value="">Select client</option>{clients.map(c=><option key={c.id} value={c.id}>{c.displayName} ({c.clientCode})</option>)}</select></label><label>Matter title<input name="title" required placeholder="e.g. Mokoena v Mokoena"/></label><label>Description<textarea name="description" rows={4}/></label><button className="primary-button">Create matter</button></form></div></section></main></div> }
+
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\src\app\payments\page.tsx
+============================================================
+import Link from "next/link"; import {requireUser} from "@/lib/permissions"; import {prisma} from "@/lib/prisma";
+export default async function Payments(){const u=await requireUser();const rows=await prisma.payment.findMany({where:{firmId:u.firmId},include:{client:true,invoice:true},orderBy:{paymentDate:"desc"}});return <Simple title="Payments" subtitle="Money received from clients and allocated to invoices." action="/payments/new" label="Record payment"><div className="card"><table className="table"><thead><tr><th>Date</th><th>Client</th><th>Invoice</th><th>Status</th><th>Amount</th></tr></thead><tbody>{rows.map(p=><tr key={p.id}><td>{p.paymentDate.toLocaleDateString("en-ZA")}</td><td>{p.client?.displayName??"â€”"}</td><td>{p.invoice?.invoiceNumber??"Unallocated"}</td><td><span className="badge">{p.status}</span></td><td>R{Number(p.amount).toFixed(2)}</td></tr>)}</tbody></table></div></Simple>}
+function Simple({title,subtitle,action,label,children}:{title:string;subtitle:string;action:string;label:string;children:React.ReactNode}){return <div className="shell"><aside className="sidebar"><div className="brand">Firm<span>Ledger</span></div><Link className="nav-link" href="/">â† Dashboard</Link><Link className="nav-link active" href="/payments">Payments</Link></aside><main className="main"><header className="topbar"><strong>Finance workspace</strong></header><section className="content"><div className="page-heading"><div><h1 className="page-title">{title}</h1><p className="page-subtitle">{subtitle}</p></div><Link className="primary-button" href={action}>{label}</Link></div><div style={{marginTop:24}}>{children}</div></section></main></div>}
+
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\src\app\payments\new\page.tsx
+============================================================
+import Link from "next/link";
+import { requireRole } from "@/lib/permissions";
+import { prisma } from "@/lib/prisma";
+import { createPayment } from "@/app/actions";
+
+export default async function NewPayment() {
+  const user = await requireRole([
+    "OWNER",
+    "ADMIN",
+    "FINANCE",
+    "ACCOUNTANT",
+  ]);
+
+  const [invoices, banks] = await Promise.all([
+    prisma.invoice.findMany({
+      where: {
+        firmId: user.firmId,
+        balanceDue: {
+          gt: 0,
+        },
+        status: {
+          no

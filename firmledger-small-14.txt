@@ -1,0 +1,294 @@
+﻿td>{t.reference||"â€”"}</td><td>{t.type}</td><td>R{Number(t.amount).toFixed(2)}</td><td><span className="badge">{t.matched?"Matched":"Unmatched"}</span></td></tr>)}</tbody></table></div>)}</section></main></div>}
+
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\src\app\banking\new\page.tsx
+============================================================
+import Link from "next/link";
+import { createBankAccount } from "@/app/actions";
+import { requireRole } from "@/lib/permissions";
+
+const SOUTH_AFRICAN_BANKS = [
+  "ABSA Bank",
+  "First National Bank (FNB)",
+  "Nedbank",
+  "Standard Bank",
+  "Capitec Bank",
+] as const;
+
+export default async function NewBankAccountPage() {
+  await requireRole([
+    "OWNER",
+    "ADMIN",
+    "FINANCE",
+    "ACCOUNTANT",
+  ]);
+
+  return (
+    <div className="shell">
+      <aside className="sidebar">
+        <div className="brand">
+          Firm<span>Ledger</span>
+        </div>
+
+        <nav className="nav">
+          <Link className="nav-link" href="/">
+            Dashboard
+          </Link>
+
+          <Link className="nav-link" href="/clients">
+            Clients
+          </Link>
+
+          <Link className="nav-link" href="/matters">
+            Matters
+          </Link>
+
+          <Link className="nav-link" href="/billing">
+            Billing
+          </Link>
+
+          <Link className="nav-link" href="/payments">
+            Payments
+          </Link>
+
+          <Link className="nav-link" href="/expenses">
+            Expenses
+          </Link>
+
+          <Link className="nav-link active" href="/banking">
+            Banking
+          </Link>
+
+          <Link className="nav-link" href="/accounting">
+            Accounting
+          </Link>
+
+          <Link className="nav-link" href="/reports">
+            Reports
+          </Link>
+
+          <Link className="nav-link" href="/audit">
+            Audit Trail
+          </Link>
+
+          <Link className="nav-link" href="/settings">
+            Settings
+          </Link>
+        </nav>
+      </aside>
+
+      <main className="main">
+        <div className="page-header">
+          <div>
+            <div className="eyebrow">
+              BANKING
+            </div>
+
+            <h1>
+              Add bank account
+            </h1>
+
+            <p className="muted">
+              Add a business bank account for
+              receipts, payments and
+              reconciliation.
+            </p>
+          </div>
+
+          <Link
+            href="/banking"
+            className="secondary-button"
+          >
+            Back to Banking
+          </Link>
+        </div>
+
+        <div className="card form-card">
+          <form action={createBankAccount}>
+            <div className="form-grid">
+              <div className="form-field">
+                <label htmlFor="name">
+                  Account name
+                </label>
+
+                <input
+                  id="name"
+                  name="name"
+                  type="text"
+                  placeholder="e.g. Business Current Account"
+                  required
+                />
+
+                <p className="field-help">
+                  Give the account a name that
+                  your firm will easily
+                  recognise.
+                </p>
+              </div>
+
+              <div className="form-field">
+                <label htmlFor="bankName">
+                  Bank
+                </label>
+
+                <select
+                  id="bankName"
+                  name="bankName"
+                  defaultValue=""
+                  required
+                >
+                  <option
+                    value=""
+                    disabled
+                  >
+                    Select bank
+                  </option>
+
+                  {SOUTH_AFRICAN_BANKS.map(
+                    (bank) => (
+                      <option
+                        key={bank}
+                        value={bank}
+                      >
+                        {bank}
+                      </option>
+                    ),
+                  )}
+                </select>
+
+                <p className="field-help">
+                  Select the South African
+                  bank where the account is
+                  held.
+                </p>
+              </div>
+
+              <div className="form-field">
+                <label htmlFor="accountNumber">
+                  Account number
+                </label>
+
+                <input
+                  id="accountNumber"
+                  name="accountNumber"
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="Enter account number"
+                  autoComplete="off"
+                />
+
+                <p className="field-help">
+                  Optional. Store the account
+                  number used for reconciliation
+                  and payment identification.
+                </p>
+              </div>
+
+              <div className="form-field">
+                <label htmlFor="accountType">
+                  Account type
+                </label>
+
+                <select
+                  id="accountType"
+                  name="accountType"
+                  defaultValue="BUSINESS_CURRENT"
+                >
+                  <option value="BUSINESS_CURRENT">
+                    Business Current
+                  </option>
+
+                  <option value="CURRENT">
+                    Current
+                  </option>
+
+                  <option value="SAVINGS">
+                    Savings
+                  </option>
+
+                  <option value="OTHER">
+                    Other
+                  </option>
+                </select>
+              </div>
+
+              <div className="form-field">
+                <label htmlFor="currency">
+                  Currency
+                </label>
+
+                <select
+                  id="currency"
+                  name="currency"
+                  defaultValue="ZAR"
+                >
+                  <option value="ZAR">
+                    South African Rand (ZAR)
+                  </option>
+                </select>
+
+                <p className="field-help">
+                  FirmLedger currently uses ZAR
+                  as the default operating
+                  currency.
+                </p>
+              </div>
+            </div>
+
+            <div className="form-notice">
+              <strong>
+                Business banking only
+              </strong>
+
+              <p>
+                This form is for ordinary
+                business bank accounts. Trust
+                banking must be created and
+                managed through the dedicated
+                Trust Accounts module.
+              </p>
+            </div>
+
+            <div className="form-actions">
+              <Link
+                href="/banking"
+                className="secondary-button"
+              >
+                Cancel
+              </Link>
+
+              <button
+                type="submit"
+                className="primary-button"
+              >
+                Add bank account
+              </button>
+            </div>
+          </form>
+        </div>
+      </main>
+    </div>
+  );
+}
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\src\app\banking\reconciliation\page.tsx
+============================================================
+import Link from "next/link";
+import { requireRole } from "@/lib/permissions";
+import { prisma } from "@/lib/prisma";
+import { addBankTransaction, reconcileBankTransaction } from "@/app/actions";
+
+export default async function Reconciliation() {
+  const u=await requireRole(["OWNER","ADMIN","FINANCE","ACCOUNTANT"]);
+  const [rows,banks,payments]=await Promise.all([
+    prisma.bankTransaction.findMany({where:{bankAccount:{firmId:u.firmId},matched:false},include:{bankAccount:true},orderBy:{transactionDate:"desc"}}),
+    prisma.bankAccount.findMany({where:{firmId:u.firmId,active:true},orderBy:{name:"asc"}}),
+    prisma.payment.findMany({where:{firmId:u.firmId,status:"COMPLETED",bankTransactions:{none:{}}},include:{client:true,invoice:true},orderBy:{paymentDate:"desc"}})
+  ]);
+  return <div className="shell"><aside className="sidebar"><div className="brand">Firm<span>Ledger</span></div><Link className="nav-link" href="/banking">â† Banking</Link><Link className="nav-link active" href="/banking/reconciliation">Reconciliation</Link></aside><main className="main"><section className="content"><div className="page-heading"><div><h1 className="page-title">Bank reconciliation</h1><p className="page-subtitle">Match imported bank receipts to recorded client payments.</p></div></div>
+    <div className="grid grid-2" style={{marginTop:24}}><div className="card"><div className="section-title">Add bank transaction</div><form action={addBankTransaction} className="form-card" style={{maxWidth:"none"}}><label>Bank<select name="bankAccountId" required><option value="">Select</option>{banks.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}</select></label><label>Description<input name="description" required placeholder="Incoming EFT" /></label><label>Reference<input name="reference" placeholder="Bank reference" /></label><label>Amount<input name="amount" type="number" min="0.01" step="0.01" required /></label><label>Type<select name="type" defaultValue="CREDIT"><option value="CREDIT">Credit / money in</option><option value="DEBIT">Debit / money out</option></select></label><button className="primary-button" type="submit">Add transaction</button></form></div>
+    <div className="card"><div className="section-title">Unmatched transactions</div>{rows.length ? rows.map(t=><div key={t.id} style={{borderBottom:"1px solid var(--border)",padding:"14px 0"}}><strong>{t.description}</strong><div className="metric-label">{t.bankAccount.name} Â· {t.reference||"No reference"} Â· R{Number(t

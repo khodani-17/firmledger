@@ -1,0 +1,338 @@
+﻿practiceArea String?
+  status       MatterStatus @default(OPEN)
+  openedAt     DateTime     @default(now())
+  closedAt     DateTime?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  expenses          Expense[]
+  invoices          Invoice[]
+  payments          Payment[]
+  purchaseInvoices  PurchaseInvoice[]
+  recurringInvoices RecurringInvoice[]
+  trustTransactions TrustTransaction[]
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  firm   Firm   @relation(fields: [firmId], references: [id], onDelete: Cascade)
+
+  @@unique([firmId, matterNumber])
+  @@index([firmId])
+  @@index([clientId])
+}
+
+model Invoice {
+  id          String  @id @default(cuid())
+  firmId      String
+  clientId    String
+  matterId    String?
+  createdById String?
+
+  invoiceNumber String
+  issueDate     DateTime  @default(now())
+  dueDate       DateTime?
+
+  subtotal   Decimal @db.Decimal(18, 2)
+  taxAmount  Decimal @default(0) @db.Decimal(18, 2)
+  total      Decimal @db.Decimal(18, 2)
+  amountPaid Decimal @default(0) @db.Decimal(18, 2)
+  balanceDue Decimal @db.Decimal(18, 2)
+
+  status InvoiceStatus @default(DRAFT)
+  notes  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  creditNotes CreditNote[]
+  client      Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  createdBy   FirmUser?     @relation("InvoiceCreatedBy", fields: [createdById], references: [id])
+  firm        Firm          @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  matter      Matter?       @relation(fields: [matterId], references: [id])
+  items       InvoiceItem[]
+  payments    Payment[]
+
+  @@unique([firmId, invoiceNumber])
+  @@index([firmId])
+  @@index([clientId])
+  @@index([matterId])
+  @@index([status])
+}
+
+model InvoiceItem {
+  id          String  @id @default(cuid())
+  invoiceId   String
+  description String
+  quantity    Decimal @default(1) @db.Decimal(18, 4)
+  unitPrice   Decimal @db.Decimal(18, 2)
+  taxRate     Decimal @default(0) @db.Decimal(5, 2)
+  taxAmount   Decimal @default(0) @db.Decimal(18, 2)
+  lineTotal   Decimal @db.Decimal(18, 2)
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+}
+
+model CreditNote {
+  id        String  @id @default(cuid())
+  firmId    String
+  clientId  String?
+  invoiceId String?
+
+  creditNumber String
+  issueDate    DateTime @default(now())
+  reason       String?
+
+  subtotal  Decimal @default(0) @db.Decimal(18, 2)
+  taxAmount Decimal @default(0) @db.Decimal(18, 2)
+  total     Decimal @default(0) @db.Decimal(18, 2)
+
+  amount Decimal @default(0) @db.Decimal(18, 2)
+
+  createdAt DateTime @default(now())
+
+  firm    Firm     @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  client  Client?  @relation(fields: [clientId], references: [id])
+  invoice Invoice? @relation(fields: [invoiceId], references: [id])
+
+  @@unique([firmId, creditNumber])
+  @@index([firmId])
+  @@index([clientId])
+  @@index([invoiceId])
+}
+
+model Payment {
+  id           String  @id @default(cuid())
+  firmId       String
+  clientId     String?
+  matterId     String?
+  invoiceId    String?
+  recordedById String?
+
+  paymentNumber String   @default(cuid())
+  amount        Decimal  @db.Decimal(18, 2)
+  paymentDate   DateTime @default(now())
+  method        String?
+  reference     String?
+
+  status PaymentStatus @default(RECEIVED)
+  notes  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  bankTransactions BankTransaction[]
+  client           Client?           @relation(fields: [clientId], references: [id])
+  firm             Firm              @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  invoice          Invoice?          @relation(fields: [invoiceId], references: [id])
+  matter           Matter?           @relation(fields: [matterId], references: [id])
+  recordedBy       FirmUser?         @relation("PaymentRecordedBy", fields: [recordedById], references: [id])
+
+  @@unique([firmId, paymentNumber])
+  @@index([firmId])
+  @@index([clientId])
+  @@index([matterId])
+  @@index([invoiceId])
+}
+
+model RecurringInvoice {
+  id       String  @id @default(cuid())
+  firmId   String
+  clientId String
+  matterId String?
+
+  description String
+
+  subtotal Decimal @default(0) @db.Decimal(18, 2)
+  amount   Decimal @default(0) @db.Decimal(18, 2)
+
+  taxRate     Decimal  @default(0) @db.Decimal(5, 2)
+  frequency   String
+  nextRunDate DateTime
+  active      Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  client Client  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  firm   Firm    @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  matter Matter? @relation(fields: [matterId], references: [id])
+
+  @@index([firmId])
+  @@index([clientId])
+  @@index([matterId])
+  @@index([nextRunDate])
+}
+
+model Expense {
+  id            String  @id @default(cuid())
+  firmId        String
+  clientId      String?
+  matterId      String?
+  supplierId    String?
+  bankAccountId String?
+  createdById   String?
+
+  description String
+  amount      Decimal @db.Decimal(18, 2)
+  taxAmount   Decimal @default(0) @db.Decimal(18, 2)
+  total       Decimal @default(0) @db.Decimal(18, 2)
+
+  expenseDate DateTime      @default(now())
+  status      ExpenseStatus @default(DRAFT)
+  receiptUrl  String?
+  notes       String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  client      Client?      @relation(fields: [clientId], references: [id])
+  createdBy   FirmUser?    @relation("ExpenseCreatedBy", fields: [createdById], references: [id])
+  firm        Firm         @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  matter      Matter?      @relation(fields: [matterId], references: [id])
+  supplier    Supplier?    @relation(fields: [supplierId], references: [id])
+  bankAccount BankAccount? @relation(fields: [bankAccountId], references: [id])
+
+  @@index([firmId])
+  @@index([clientId])
+  @@index([matterId])
+  @@index([supplierId])
+  @@index([bankAccountId])
+}
+
+model BankAccount {
+  id     String @id @default(cuid())
+  firmId String
+
+  name          String
+  bankName      String?
+  accountNumber String?
+  branchCode    String?
+  accountType   String?
+  currency      String  @default("ZAR")
+
+  openingBalance Decimal @default(0) @db.Decimal(18, 2)
+  active         Boolean @default(true)
+  isTrust        Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  firm             Firm                @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  transactions     BankTransaction[]
+  reconciliations  BankReconciliation[]
+  supplierPayments SupplierPayment[]
+  expenses         Expense[]
+
+  @@index([firmId])
+}
+
+model BankTransaction {
+  id                String  @id @default(cuid())
+  firmId            String
+  bankAccountId     String
+  paymentId         String?
+  reconciliationId  String?
+
+  transactionDate DateTime
+  type            BankTransactionType
+  amount          Decimal             @db.Decimal(18, 2)
+  description     String?
+  reference       String?
+
+  matched Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  bankAccount    BankAccount         @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
+  firm           Firm                @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  payment        Payment?            @relation(fields: [paymentId], references: [id])
+  reconciliation BankReconciliation? @relation(fields: [reconciliationId], references: [id], onDelete: SetNull)
+
+  @@index([firmId])
+  @@index([bankAccountId])
+  @@index([transactionDate])
+  @@index([matched])
+  @@index([reconciliationId])
+}
+
+model BankReconciliation {
+  id            String @id @default(cuid())
+  firmId        String
+  bankAccountId String
+
+  statementDate    DateTime
+  statementBalance Decimal  @db.Decimal(18, 2)
+  ledgerBalance    Decimal  @db.Decimal(18, 2)
+  difference       Decimal  @db.Decimal(18, 2)
+
+  status        BankReconciliationStatus @default(COMPLETED)
+  completedById String
+  completedAt   DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  firm         Firm         @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  bankAccount  BankAccount  @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
+  completedBy  FirmUser     @relation("ReconciliationCompletedBy", fields: [completedById], references: [id])
+  transactions BankTransaction[]
+
+  @@index([firmId])
+  @@index([bankAccountId])
+  @@index([statementDate])
+  @@index([status])
+  @@index([completedById])
+}
+
+model LedgerAccount {
+  id     String @id @default(cuid())
+  firmId String
+  code   String
+  name   String
+
+  accountType AccountType?
+  type        String?
+
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  journalLines JournalLine[]
+  firm         Firm          @relation(fields: [firmId], references: [id], onDelete: Cascade)
+
+  @@unique([firmId, code])
+  @@index([firmId])
+}
+
+model JournalEntry {
+  id          String  @id @default(cuid())
+  firmId      String
+  periodId    String?
+  createdById String?
+
+  reference   String?
+  description String?
+
+  sourceType String?
+  sourceId   String?
+
+  entryDate DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  createdBy FirmUser?        @relation("JournalCreatedBy", fields: [createdById], references: [id])
+  firm      Firm             @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  period    FinancialPeriod? @relation(fields: [periodId], references: [id])
+  lines     JournalLine[]
+
+  @@index([firmId])
+  @@index([periodId])
+  @@index([sourceType, sourceId])
+}
+
+model JournalLine {
+  id              String @id @default(cuid())
+  journalEntryId  String
+  ledgerAccountId String
+
+  descripti

@@ -1,0 +1,329 @@
+﻿
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\.env.example
+============================================================
+DATABASE_URL="postgresql://USER:PASSWORD@HOST/DATABASE?sslmode=require"
+
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\.gitignore
+============================================================
+node_modules
+.next
+.env
+.env.local
+.env*.local
+*.log
+
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\next-env.d.ts
+============================================================
+/// <reference types="next" />
+/// <reference types="next/image-types/global" />
+import "./.next/dev/types/routes.d.ts";
+import "./.next/dev/types/root-params.d.ts";
+
+// NOTE: This file should not be edited
+// see https://nextjs.org/docs/app/api-reference/config/typescript for more information.
+
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\package.json
+============================================================
+{
+  "name": "firmledger",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:migrate": "prisma migrate dev",
+    "db:seed": "tsx prisma/seed.ts"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "^7.10.0",
+    "@prisma/client": "^7.10.0",
+    "next": "^16.3.3",
+    "pg": "^8.23.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "prisma": "^7.10.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.8.0"
+  }
+}
+
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\prisma.config.ts
+============================================================
+import "dotenv/config";
+import { defineConfig, env } from "prisma/config";
+
+export default defineConfig({
+  schema: "prisma/schema.prisma",
+
+  migrations: {
+    path: "prisma/migrations",
+  },
+
+  datasource: {
+    url: env("DATABASE_URL"),
+  },
+});
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\README.md
+============================================================
+# FirmLedger by Manzima
+
+FirmLedger is a South African law-firm financial management and bookkeeping platform designed for small and growing practices. It keeps lawyer-facing workflows simple while giving finance/accounting users a controlled double-entry accounting workspace.
+
+## Current platform scope
+
+- Multi-tenant firms and role-based access
+- Clients and matters
+- Client billing and VAT
+- Client payments and invoice allocation
+- Double-entry journals and trial balance
+- Business bank accounts and reconciliation
+- Expenses and disbursements
+- Suppliers and purchase invoices
+- Accounts payable and supplier payments
+- Accountant review queue and audit trail
+- Financial periods and month-end close controls
+- VAT/tax working-paper preparation from posted journals
+- Recurring billing schedules
+- Credit notes
+- Dedicated trust accounts, client/matter trust ledgers and trust reconciliation records
+- Management financial reports
+
+## Accounting controls
+
+System-generated postings are balanced before they are saved. Business banking is separated from trust accounting. Trust transactions are held in their own subsystem and require client allocation. Closed periods and accountant review are intended to support month-end control.
+
+FirmLedger does not claim to replace professional accounting or statutory responsibility. VAT/tax outputs are prepared as working figures and should be reviewed and submitted by the responsible professional/firm process.
+
+## Demo credentials
+
+- owner@example.com / ChangeMe123!
+- finance@example.com / ChangeMe123!
+- accountant@example.com / ChangeMe123!
+- lawyer@example.com / ChangeMe123!
+
+Change or remove demo credentials before production.
+
+## Stack
+
+- Next.js 16
+- React 19
+- TypeScript
+- Prisma 7
+- PostgreSQL / Neon
+
+## Setup
+
+1. Copy `.env.example` to `.env`.
+2. Set `DATABASE_URL` and a strong `AUTH_SECRET`.
+3. Install dependencies with `npm install`.
+4. Generate Prisma client: `npm run db:generate`.
+5. Push the schema: `npm run db:push`.
+6. Seed development data: `npm run db:seed`.
+7. Run: `npm run dev`.
+
+## Important development note
+
+The source was expanded to the full accounting workflow, but dependency installation/build verification still needs to be completed in an environment where npm package installation can finish successfully. The project intentionally excludes `node_modules` and `.next` from the package.
+
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\tsconfig.json
+============================================================
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "react-jsx",
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": [
+        "./src/*"
+      ]
+    }
+  },
+  "include": [
+    "next-env.d.ts",
+    ".next/types/**/*.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/dev/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
+}
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\prisma\schema.prisma
+============================================================
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Firm {
+  id                 String   @id @default(cuid())
+  name               String
+  registrationNumber String?
+  vatNumber          String?
+  taxNumber          String?
+  email              String?
+  phone              String?
+  address            String?
+  city               String?
+  province           String?
+  country            String   @default("South Africa")
+  currency           String   @default("ZAR")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  accountantReviews    AccountantReview[]
+  auditLogs            AuditLog[]
+  bankAccounts         BankAccount[]
+  bankTransactions     BankTransaction[]
+  bankReconciliations  BankReconciliation[]
+  clients              Client[]
+  creditNotes          CreditNote[]
+  expenses             Expense[]
+  financialPeriods     FinancialPeriod[]
+  users                FirmUser[]
+  invoices             Invoice[]
+  journalEntries       JournalEntry[]
+  ledgerAccounts       LedgerAccount[]
+  matters              Matter[]
+  payments             Payment[]
+  purchaseInvoices     PurchaseInvoice[]
+  recurringInvoices    RecurringInvoice[]
+  suppliers            Supplier[]
+  supplierPayments     SupplierPayment[]
+  taxRates             TaxRate[]
+  taxReturns            TaxReturn[]
+  trustAccounts        TrustAccount[]
+  trustReconciliations TrustReconciliation[]
+  trustTransactions    TrustTransaction[]
+}
+
+model FirmUser {
+  id           String   @id @default(cuid())
+  firmId       String
+  name         String
+  email        String
+  passwordHash String
+  role         Role     @default(STAFF)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  reviews                  AccountantReview[] @relation("ReviewBy")
+  auditLogs                AuditLog[]
+  createdExpenses          Expense[]          @relation("ExpenseCreatedBy")
+  closedPeriods            FinancialPeriod[]  @relation("ClosedBy")
+  completedReconciliations BankReconciliation[] @relation("ReconciliationCompletedBy")
+  firm                     Firm               @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  createdInvoices          Invoice[]          @relation("InvoiceCreatedBy")
+  journalEntries           JournalEntry[]     @relation("JournalCreatedBy")
+  recordedPayments         Payment[]          @relation("PaymentRecordedBy")
+  createdSupplierPayments  SupplierPayment[]
+  createdTrustTransactions TrustTransaction[]
+
+  @@unique([firmId, email])
+  @@index([firmId])
+}
+
+model Client {
+  id     String @id @default(cuid())
+  firmId String
+
+  clientCode  String?
+  displayName String?
+  type        ClientType @default(INDIVIDUAL)
+
+  clientType         ClientType?
+  name               String?
+  surname            String?
+  companyName        String?
+  email              String?
+  phone              String?
+  idNumber           String?
+  registrationNumber String?
+  taxNumber          String?
+  address            String?
+  city               String?
+  province           String?
+  country            String      @default("South Africa")
+  active             Boolean     @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  firm              Firm               @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  expenses          Expense[]
+  invoices          Invoice[]
+  matters           Matter[]
+  payments          Payment[]
+  recurringInvoices RecurringInvoice[]
+  trustTransactions TrustTransaction[]
+  creditNotes       CreditNote[]
+
+  @@unique([firmId, clientCode])
+  @@index([firmId])
+  @@index([firmId, displayName])
+}
+
+model Matter {
+  id           String       @id @default(cuid())
+  firmId       String
+  clientId     String
+  matterNumber String
+  title        String
+  description  String?
+  

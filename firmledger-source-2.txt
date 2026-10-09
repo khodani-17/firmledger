@@ -1,0 +1,1288 @@
+﻿.journalLine.deleteMany();
+  await prisma.journalEntry.deleteMany();
+  await prisma.bankTransaction.deleteMany();
+  await prisma.payment.deleteMany();
+  await prisma.creditNote.deleteMany();
+  await prisma.recurringInvoice.deleteMany();
+  await prisma.purchaseInvoice.deleteMany();
+  await prisma.expense.deleteMany();
+  await prisma.trustTransaction.deleteMany();
+  await prisma.trustReconciliation.deleteMany();
+  await prisma.trustAccount.deleteMany();
+  await prisma.supplier.deleteMany();
+  await prisma.invoiceItem.deleteMany();
+  await prisma.invoice.deleteMany();
+  await prisma.matter.deleteMany();
+  await prisma.client.deleteMany();
+  await prisma.taxReturn.deleteMany();
+  await prisma.financialPeriod.deleteMany();
+  await prisma.taxRate.deleteMany();
+  await prisma.ledgerAccount.deleteMany();
+  await prisma.bankAccount.deleteMany();
+  await prisma.firmUser.deleteMany();
+  await prisma.firm.deleteMany();
+
+  const password = await hashPassword("ChangeMe123!");
+
+  const firm = await prisma.firm.create({
+    data: {
+      name: "Maphorogo Attorneys",
+      registrationNumber: "TEST-FIRM-001",
+      vatNumber: "4123456789",
+      currency: "ZAR",
+
+      users: {
+        create: [
+          {
+            name: "Firm Owner",
+            email: "owner@example.com",
+            passwordHash: password,
+            role: "OWNER",
+          },
+          {
+            name: "Finance User",
+            email: "finance@example.com",
+            passwordHash: password,
+            role: "FINANCE",
+          },
+          {
+            name: "Accountant",
+            email: "accountant@example.com",
+            passwordHash: password,
+            role: "ACCOUNTANT",
+          },
+          {
+            name: "Attorney",
+            email: "lawyer@example.com",
+            passwordHash: password,
+            role: "LAWYER",
+          },
+        ],
+      },
+
+      taxRates: {
+        create: [
+          {
+            name: "VAT 15%",
+            rate: 15,
+            code: "VAT15",
+          },
+          {
+            name: "Zero Rated",
+            rate: 0,
+            code: "ZERO",
+          },
+        ],
+      },
+
+      ledgerAccounts: {
+        create: [
+          {
+            code: "1000",
+            name: "Bank",
+            accountType: "ASSET",
+          },
+          {
+            code: "1100",
+            name: "Accounts Receivable",
+            accountType: "ASSET",
+          },
+          {
+            code: "2000",
+            name: "VAT Output Control",
+            accountType: "LIABILITY",
+          },
+          {
+            code: "2100",
+            name: "VAT Input Control",
+            accountType: "ASSET",
+          },
+          {
+            code: "2200",
+            name: "Accounts Payable",
+            accountType: "LIABILITY",
+          },
+          {
+            code: "4000",
+            name: "Legal Fees",
+            accountType: "REVENUE",
+          },
+          {
+            code: "4100",
+            name: "Disbursement Recovery",
+            accountType: "REVENUE",
+          },
+          {
+            code: "5000",
+            name: "Operating Expenses",
+            accountType: "EXPENSE",
+          },
+        ],
+      },
+    },
+  });
+
+  const bank = await prisma.bankAccount.create({
+    data: {
+      firmId: firm.id,
+      name: "Business Current Account",
+      bankName: "Demo Bank",
+      accountNumber: "****1234",
+    },
+  });
+
+  const client = await prisma.client.create({
+    data: {
+      firmId: firm.id,
+      clientCode: "CL-0001",
+      displayName: "Demo Client",
+      email: "client@example.com",
+      type: "INDIVIDUAL",
+    },
+  });
+
+  const matter = await prisma.matter.create({
+    data: {
+      firmId: firm.id,
+      clientId: client.id,
+      matterNumber: "MAT-2026-0001",
+      title: "Demo Civil Matter",
+    },
+  });
+
+  const invoice = await prisma.invoice.create({
+    data: {
+      firmId: firm.id,
+      clientId: client.id,
+      matterId: matter.id,
+      invoiceNumber: "INV-0001",
+      issueDate: new Date(),
+      dueDate: new Date(Date.now() + 30 * 86400000),
+      status: "SENT",
+      subtotal: 10000,
+      taxAmount: 1500,
+      total: 11500,
+      amountPaid: 0,
+      balanceDue: 11500,
+
+      items: {
+        create: [
+          {
+            description: "Professional legal services",
+            quantity: 1,
+            unitPrice: 10000,
+            taxRate: 15,
+            lineTotal: 10000,
+          },
+        ],
+      },
+    },
+  });
+
+  await prisma.$transaction(async (tx) => {
+    await postInvoice(tx, {
+      firmId: firm.id,
+      invoiceId: invoice.id,
+      invoiceNumber: invoice.invoiceNumber,
+      entryDate: invoice.issueDate,
+      subtotal: 10000,
+      taxAmount: 1500,
+    });
+
+    await tx.accountantReview.create({
+      data: {
+        firmId: firm.id,
+        title: `Review invoice ${invoice.invoiceNumber}`,
+        status: "PENDING",
+        notes: "Demo invoice awaiting accountant review.",
+      },
+    });
+  });
+
+  const supplier = await prisma.supplier.create({
+    data: {
+      firmId: firm.id,
+      supplierCode: "SUP-0001",
+      name: "Demo Office Supplies",
+      vatNumber: "4000000000",
+    },
+  });
+
+  const purchase = await prisma.purchaseInvoice.create({
+    data: {
+      firmId: firm.id,
+      supplierId: supplier.id,
+      invoiceNumber: "SUP-INV-001",
+      invoiceDate: new Date(),
+      dueDate: new Date(Date.now() + 30 * 86400000),
+      status: "RECEIVED",
+      subtotal: 1000,
+      taxAmount: 150,
+      total: 1150,
+      amountPaid: 0,
+      balanceDue: 1150,
+      description: "Office supplies",
+    },
+  });
+
+  await prisma.$transaction(async (tx) => {
+    const expense = await tx.ledgerAccount.findFirstOrThrow({
+      where: {
+        firmId: firm.id,
+        code: "5000",
+      },
+    });
+
+    const vat = await tx.ledgerAccount.findFirstOrThrow({
+      where: {
+        firmId: firm.id,
+        code: "2100",
+      },
+    });
+
+    const ap = await tx.ledgerAccount.findFirstOrThrow({
+      where: {
+        firmId: firm.id,
+        code: "2200",
+      },
+    });
+
+    await tx.journalEntry.create({
+      data: {
+        firmId: firm.id,
+        entryDate: purchase.invoiceDate,
+        description: `Purchase invoice ${purchase.invoiceNumber}`,
+        sourceType: "PURCHASE_INVOICE",
+        sourceId: purchase.id,
+
+        lines: {
+          create: [
+            {
+              ledgerAccountId: expense.id,
+              debit: 1000,
+              credit: 0,
+            },
+            {
+              ledgerAccountId: vat.id,
+              debit: 150,
+              credit: 0,
+            },
+            {
+              ledgerAccountId: ap.id,
+              debit: 0,
+              credit: 1150,
+            },
+          ],
+        },
+      },
+    });
+  });
+
+  const trust = await prisma.trustAccount.create({
+    data: {
+      firmId: firm.id,
+      name: "Client Trust Account",
+      bankName: "Demo Bank",
+      accountNumber: "****5678",
+    },
+  });
+
+  const financeUser = await prisma.firmUser.findFirstOrThrow({
+    where: {
+      firmId: firm.id,
+      role: "FINANCE",
+    },
+  });
+
+  await prisma.trustTransaction.create({
+    data: {
+      firmId: firm.id,
+      trustAccountId: trust.id,
+      clientId: client.id,
+      matterId: matter.id,
+      type: "RECEIPT",
+      status: "POSTED",
+      transactionDate: new Date(),
+      reference: "TRUST-001",
+      description: "Initial client trust deposit",
+      amount: 25000,
+      createdById: financeUser.id,
+    },
+  });
+
+  await prisma.financialPeriod.create({
+    data: {
+      firmId: firm.id,
+      name: "September 2026",
+      startDate: new Date("2026-09-01"),
+      endDate: new Date("2026-09-30"),
+    },
+  });
+
+  await prisma.recurringInvoice.create({
+    data: {
+      firmId: firm.id,
+      clientId: client.id,
+      matterId: matter.id,
+      description: "Monthly retainer",
+      subtotal: 5000,
+      taxRate: 15,
+      frequency: "MONTHLY",
+      nextRunDate: new Date("2026-10-01"),
+    },
+  });
+
+  console.log(`Seeded FirmLedger demo firm: ${firm.id}`);
+  console.log("Development password: ChangeMe123!");
+  console.log(`Business bank: ${bank.id}`);
+}
+
+main()
+  .catch((e) => {
+    console.error(e);
+    process.exit(1);
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
+  });
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\scripts\check-invoice-accounting.ts
+============================================================
+import "dotenv/config";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaClient } from "@/generated/prisma/client";
+
+const connectionString = process.env.DATABASE_URL;
+
+if (!connectionString) {
+  throw new Error("DATABASE_URL is not defined.");
+}
+
+const adapter = new PrismaPg({
+  connectionString,
+});
+
+const prisma = new PrismaClient({
+  adapter,
+});
+
+async function main() {
+  const firm = await prisma.firm.findFirst({
+    where: {
+      name: "Maphorogo Attorneys",
+    },
+  });
+
+  if (!firm) {
+    throw new Error("Maphorogo Attorneys was not found.");
+  }
+
+  const invoice = await prisma.invoice.findFirst({
+    where: {
+      firmId: firm.id,
+      invoiceNumber: "INV-0003",
+    },
+    include: {
+      client: true,
+      matter: true,
+    },
+  });
+
+  if (!invoice) {
+    console.log("INV-0003 was not found.");
+    return;
+  }
+
+  console.log("INVOICE");
+  console.log("-------");
+  console.log(`Number:   ${invoice.invoiceNumber}`);
+  console.log(`Client:   ${invoice.client.displayName}`);
+  console.log(`Subtotal: R${Number(invoice.subtotal).toFixed(2)}`);
+  console.log(`VAT:      R${Number(invoice.taxAmount).toFixed(2)}`);
+  console.log(`Total:    R${Number(invoice.total).toFixed(2)}`);
+  console.log(`Paid:     R${Number(invoice.amountPaid).toFixed(2)}`);
+  console.log(`Balance:  R${Number(invoice.balanceDue).toFixed(2)}`);
+  console.log(`Status:   ${invoice.status}`);
+
+  const entries = await prisma.journalEntry.findMany({
+    where: {
+      firmId: firm.id,
+      sourceType: "INVOICE",
+      sourceId: invoice.id,
+    },
+    include: {
+      lines: {
+        include: {
+          ledgerAccount: true,
+        },
+      },
+    },
+    orderBy: {
+      entryDate: "asc",
+    },
+  });
+
+  console.log("");
+  console.log("JOURNAL ENTRIES");
+  console.log("----------------");
+
+  if (entries.length === 0) {
+    console.log("No journal entries found.");
+    return;
+  }
+
+  for (const entry of entries) {
+    console.log("");
+    console.log(`Description: ${entry.description}`);
+    console.log(`Source: ${entry.sourceType}`);
+    console.log("");
+
+    let totalDebit = 0;
+    let totalCredit = 0;
+
+    for (const line of entry.lines) {
+      const debit = Number(line.debit);
+      const credit = Number(line.credit);
+
+      totalDebit += debit;
+      totalCredit += credit;
+
+      console.log(
+        `${line.ledgerAccount.code} - ${line.ledgerAccount.name} | Debit R${debit.toFixed(2)} | Credit R${credit.toFixed(2)}`
+      );
+    }
+
+    console.log("");
+    console.log(`Total Debit:  R${totalDebit.toFixed(2)}`);
+    console.log(`Total Credit: R${totalCredit.toFixed(2)}`);
+    console.log(
+      `Balanced: ${Math.abs(totalDebit - totalCredit) < 0.01 ? "YES" : "NO"}`
+    );
+  }
+}
+
+main()
+  .catch((error) => {
+    console.error("CHECK ERROR:", error);
+    process.exitCode = 1;
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
+  });
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\scripts\check-invoices.ts
+============================================================
+import "dotenv/config";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaClient } from "@/generated/prisma/client";
+
+const connectionString = process.env.DATABASE_URL;
+
+if (!connectionString) {
+  throw new Error("DATABASE_URL is not defined.");
+}
+
+const adapter = new PrismaPg({
+  connectionString,
+});
+
+const prisma = new PrismaClient({
+  adapter,
+});
+
+async function main() {
+  const firm = await prisma.firm.findFirst({
+    where: {
+      name: "Maphorogo Attorneys",
+    },
+  });
+
+  if (!firm) {
+    throw new Error("Maphorogo Attorneys was not found.");
+  }
+
+  const invoices = await prisma.invoice.findMany({
+    where: {
+      firmId: firm.id,
+    },
+    orderBy: {
+      invoiceNumber: "asc",
+    },
+    select: {
+      invoiceNumber: true,
+      subtotal: true,
+      taxAmount: true,
+      total: true,
+      amountPaid: true,
+      balanceDue: true,
+      status: true,
+    },
+  });
+
+  console.log(`Firm: ${firm.name}`);
+  console.log("");
+  console.log("Current invoices:");
+
+  if (invoices.length === 0) {
+    console.log("No invoices found.");
+  } else {
+    for (const invoice of invoices) {
+      console.log(
+        `- ${invoice.invoiceNumber}: subtotal R${invoice.subtotal.toFixed(2)}, VAT R${invoice.taxAmount.toFixed(2)}, total R${invoice.total.toFixed(2)}, paid R${invoice.amountPaid.toFixed(2)}, balance R${invoice.balanceDue.toFixed(2)}, status ${invoice.status}`
+      );
+    }
+  }
+
+  const testInvoices = await prisma.invoice.count({
+    where: {
+      firmId: firm.id,
+      invoiceNumber: {
+        in: ["INV-0001", "INV-0002", "INV-0003"],
+      },
+    },
+  });
+
+  console.log("");
+  console.log(
+    `INV-0001 to INV-0003 still in database: ${testInvoices}`
+  );
+}
+
+main()
+  .catch((error) => {
+    console.error("CHECK ERROR:", error);
+    process.exitCode = 1;
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
+  });
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\scripts\check-payment-accounting.ts
+============================================================
+import "dotenv/config";
+
+import { PrismaClient } from "../src/generated/prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
+
+const connectionString = process.env.DATABASE_URL;
+
+if (!connectionString) {
+  throw new Error("DATABASE_URL is not defined.");
+}
+
+const adapter = new PrismaPg({
+  connectionString,
+});
+
+const prisma = new PrismaClient({
+  adapter,
+});
+
+async function main() {
+  const invoice = await prisma.invoice.findFirst({
+    where: {
+      invoiceNumber: "INV-0003",
+    },
+    include: {
+      client: true,
+      payments: {
+        orderBy: {
+          createdAt: "asc",
+        },
+        include: {
+          bankTransactions: {
+            include: {
+              bankAccount: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!invoice) {
+    throw new Error("INV-0003 was not found.");
+  }
+
+  console.log("INVOICE");
+  console.log("-------");
+  console.log(`Number:   ${invoice.invoiceNumber}`);
+  console.log(`Client:   ${invoice.client.displayName}`);
+  console.log(`Total:    R${Number(invoice.total).toFixed(2)}`);
+  console.log(`Paid:     R${Number(invoice.amountPaid).toFixed(2)}`);
+  console.log(`Balance:  R${Number(invoice.balanceDue).toFixed(2)}`);
+  console.log(`Status:   ${invoice.status}`);
+
+  console.log("");
+  console.log("PAYMENTS");
+  console.log("--------");
+
+  if (invoice.payments.length === 0) {
+    console.log("No payments found.");
+    return;
+  }
+
+  for (const payment of invoice.payments) {
+    console.log("");
+    console.log(`Payment ID: ${payment.id}`);
+    console.log(`Amount:     R${Number(payment.amount).toFixed(2)}`);
+    console.log(`Reference:  ${payment.reference}`);
+    console.log(`Method:     ${payment.method}`);
+    console.log(`Status:     ${payment.status}`);
+
+    console.log("");
+    console.log("BANK TRANSACTIONS");
+    console.log("-----------------");
+
+    if (payment.bankTransactions.length === 0) {
+      console.log("No bank transaction found.");
+    }
+
+    for (const transaction of payment.bankTransactions) {
+      console.log(
+        `Bank:        ${transaction.bankAccount.bankName ?? "Unknown"} â€” ${transaction.bankAccount.name}`,
+      );
+
+      console.log(
+        `Type:        ${transaction.type}`,
+      );
+
+      console.log(
+        `Amount:      R${Number(transaction.amount).toFixed(2)}`,
+      );
+
+      console.log(
+        `Description: ${transaction.description ?? ""}`,
+      );
+
+      console.log(
+        `Reference:   ${transaction.reference ?? ""}`,
+      );
+
+      console.log(
+        `Matched:     ${transaction.matched ? "YES" : "NO"}`,
+      );
+    }
+  }
+
+  console.log("");
+  console.log("PAYMENT JOURNAL ENTRIES");
+  console.log("-----------------------");
+
+  const paymentIds = invoice.payments.map(
+    (payment) => payment.id,
+  );
+
+  const entries = await prisma.journalEntry.findMany({
+    where: {
+      sourceType: "PAYMENT",
+      sourceId: {
+        in: paymentIds,
+      },
+    },
+    include: {
+      lines: {
+        include: {
+          ledgerAccount: true,
+        },
+      },
+    },
+    orderBy: {
+      entryDate: "asc",
+    },
+  });
+
+  if (entries.length === 0) {
+    console.log("No payment journal entries found.");
+    return;
+  }
+
+  for (const entry of entries) {
+    console.log("");
+    console.log(`Description: ${entry.description}`);
+    console.log(`Source: ${entry.sourceType}`);
+
+    let totalDebit = 0;
+    let totalCredit = 0;
+
+    for (const line of entry.lines) {
+      const debit = Number(line.debit);
+      const credit = Number(line.credit);
+
+      totalDebit += debit;
+      totalCredit += credit;
+
+      console.log(
+        `${line.ledgerAccount.code} - ${line.ledgerAccount.name} | Debit R${debit.toFixed(2)} | Credit R${credit.toFixed(2)}`,
+      );
+    }
+
+    console.log("");
+    console.log(
+      `Total Debit:  R${totalDebit.toFixed(2)}`,
+    );
+
+    console.log(
+      `Total Credit: R${totalCredit.toFixed(2)}`,
+    );
+
+    console.log(
+      `Balanced: ${
+        Math.abs(totalDebit - totalCredit) < 0.005
+          ? "YES"
+          : "NO"
+      }`,
+    );
+  }
+}
+
+main()
+  .catch((error) => {
+    console.error(error);
+    process.exit(1);
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
+  });
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\scripts\cleanup-test-invoices.ts
+============================================================
+import "dotenv/config";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaClient } from "@/generated/prisma/client";
+
+const connectionString = process.env.DATABASE_URL;
+
+if (!connectionString) {
+  throw new Error("DATABASE_URL is not defined.");
+}
+
+const adapter = new PrismaPg({
+  connectionString,
+});
+
+const prisma = new PrismaClient({
+  adapter,
+});
+
+const TEST_INVOICES = [
+  "INV-0001",
+  "INV-0002",
+  ];
+
+async function main() {
+  const firm = await prisma.firm.findFirst({
+    where: {
+      name: "Maphorogo Attorneys",
+    },
+  });
+
+  if (!firm) {
+    throw new Error("Maphorogo Attorneys was not found.");
+  }
+
+  console.log(`Firm: ${firm.name}`);
+  console.log("");
+
+  const invoices = await prisma.invoice.findMany({
+    where: {
+      firmId: firm.id,
+      invoiceNumber: {
+        in: TEST_INVOICES,
+      },
+    },
+    select: {
+      id: true,
+      invoiceNumber: true,
+      subtotal: true,
+      taxAmount: true,
+      total: true,
+      balanceDue: true,
+    },
+    orderBy: {
+      invoiceNumber: "asc",
+    },
+  });
+
+  if (invoices.length === 0) {
+    console.log("No matching test invoices found.");
+    return;
+  }
+
+  console.log("Invoices that will be removed:");
+
+  for (const invoice of invoices) {
+    console.log(
+      `- ${invoice.invoiceNumber}: R${Number(invoice.total).toFixed(2)}`,
+    );
+  }
+
+  console.log("");
+
+  const invoiceIds = invoices.map((invoice) => invoice.id);
+
+  /*
+   * Safety check:
+   * Do not silently delete invoices that already have payments
+   * or credit notes attached to them.
+   */
+  const payments = await prisma.payment.findMany({
+    where: {
+      firmId: firm.id,
+      invoiceId: {
+        in: invoiceIds,
+      },
+    },
+    select: {
+      id: true,
+      invoiceId: true,
+      amount: true,
+      reference: true,
+    },
+  });
+
+  if (payments.length > 0) {
+    console.error(
+      "STOP: One or more test invoices already have payments.",
+    );
+
+    for (const payment of payments) {
+      console.error(
+        `Payment ${payment.id}: R${Number(payment.amount).toFixed(2)} (${payment.reference ?? "no reference"})`,
+      );
+    }
+
+    console.error("No invoices were deleted.");
+
+    return;
+  }
+
+  const creditNotes = await prisma.creditNote.findMany({
+    where: {
+      firmId: firm.id,
+      invoiceId: {
+        in: invoiceIds,
+      },
+    },
+    select: {
+      id: true,
+      creditNumber: true,
+      invoiceId: true,
+    },
+  });
+
+  if (creditNotes.length > 0) {
+    console.error(
+      "STOP: One or more test invoices already have credit notes.",
+    );
+
+    for (const note of creditNotes) {
+      console.error(`Credit note ${note.creditNumber}`);
+    }
+
+    console.error("No invoices were deleted.");
+
+    return;
+  }
+
+  /*
+   * Use a longer transaction timeout because this cleanup performs
+   * several database operations before committing.
+   */
+  await prisma.$transaction(
+    async (tx) => {
+      /*
+       * 1. Delete journal entries created by the invoices.
+       *
+       * JournalEntry -> JournalLine has onDelete: Cascade,
+       * so deleting the journal entry also deletes its lines.
+       */
+      const journalEntries = await tx.journalEntry.findMany({
+        where: {
+          firmId: firm.id,
+          sourceType: "INVOICE",
+          sourceId: {
+            in: invoiceIds,
+          },
+        },
+        select: {
+          id: true,
+          sourceId: true,
+        },
+      });
+
+      for (const entry of journalEntries) {
+        await tx.journalEntry.delete({
+          where: {
+            id: entry.id,
+          },
+        });
+      }
+
+      console.log(
+        `Deleted ${journalEntries.length} invoice journal entr${
+          journalEntries.length === 1 ? "y" : "ies"
+        }.`,
+      );
+
+      /*
+       * 2. Delete accountant review records created by createInvoice().
+       *
+       * createInvoice() creates:
+       * "Review invoice INV-XXXX"
+       */
+      const reviews = await tx.accountantReview.findMany({
+        where: {
+          firmId: firm.id,
+          title: {
+            in: invoices.map(
+              (invoice) =>
+                `Review invoice ${invoice.invoiceNumber}`,
+            ),
+          },
+        },
+        select: {
+          id: true,
+          title: true,
+        },
+      });
+
+      for (const review of reviews) {
+        await tx.accountantReview.delete({
+          where: {
+            id: review.id,
+          },
+        });
+      }
+
+      console.log(
+        `Deleted ${reviews.length} accountant review record${
+          reviews.length === 1 ? "" : "s"
+        }.`,
+      );
+
+      /*
+       * 3. Delete audit records created for these invoices.
+       */
+      const auditLogs = await tx.auditLog.findMany({
+        where: {
+          firmId: firm.id,
+          entity: "Invoice",
+          entityId: {
+            in: invoiceIds,
+          },
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      for (const log of auditLogs) {
+        await tx.auditLog.delete({
+          where: {
+            id: log.id,
+          },
+        });
+      }
+
+      console.log(
+        `Deleted ${auditLogs.length} invoice audit log${
+          auditLogs.length === 1 ? "" : "s"
+        }.`,
+      );
+
+      /*
+       * 4. Delete the invoices.
+       *
+       * InvoiceItem records are automatically deleted because:
+       *
+       * InvoiceItem.invoice -> Invoice
+       * onDelete: Cascade
+       */
+      for (const invoice of invoices) {
+        await tx.invoice.delete({
+          where: {
+            id: invoice.id,
+          },
+        });
+      }
+
+      console.log(
+        `Deleted ${invoices.length} test invoice${
+          invoices.length === 1 ? "" : "s"
+        }.`,
+      );
+    },
+    {
+      maxWait: 10000,
+      timeout: 30000,
+    },
+  );
+
+  console.log("");
+  console.log("Cleanup completed successfully.");
+  console.log("");
+
+  console.log("Remaining test invoices:");
+
+  const remaining = await prisma.invoice.findMany({
+    where: {
+      firmId: firm.id,
+      invoiceNumber: {
+        in: TEST_INVOICES,
+      },
+    },
+    select: {
+      invoiceNumber: true,
+    },
+  });
+
+  if (remaining.length === 0) {
+    console.log("None.");
+  } else {
+    for (const invoice of remaining) {
+      console.log(`- ${invoice.invoiceNumber}`);
+    }
+  }
+
+  console.log("");
+  console.log("INV-0004 and INV-0005 were not touched.");
+}
+
+main()
+  .catch((error) => {
+    console.error("CLEANUP ERROR:", error);
+    process.exitCode = 1;
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
+  });
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\scripts\setup-firmledger-accounts.ts
+============================================================
+import "dotenv/config";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaClient } from "../src/generated/prisma/client";
+
+const connectionString = process.env.DATABASE_URL;
+
+if (!connectionString) {
+  throw new Error("DATABASE_URL is not defined.");
+}
+
+const adapter = new PrismaPg({
+  connectionString,
+});
+
+const prisma = new PrismaClient({
+  adapter,
+});
+
+async function main() {
+  const firm = await prisma.firm.findFirst({
+    where: {
+      name: "Maphorogo Attorneys",
+    },
+  });
+
+  if (!firm) {
+    throw new Error("Maphorogo Attorneys firm was not found.");
+  }
+
+  const accounts = [
+    {
+      code: "1000",
+      name: "Bank",
+      accountType: "ASSET",
+    },
+    {
+      code: "1100",
+      name: "Accounts Receivable",
+      accountType: "ASSET",
+    },
+    {
+      code: "2000",
+      name: "Output VAT",
+      accountType: "LIABILITY",
+    },
+    {
+      code: "2100",
+      name: "Input VAT",
+      accountType: "ASSET",
+    },
+    {
+      code: "2200",
+      name: "Accounts Payable",
+      accountType: "LIABILITY",
+    },
+    {
+      code: "4000",
+      name: "Legal / Professional Revenue",
+      accountType: "REVENUE",
+    },
+    {
+      code: "5000",
+      name: "Operating Expenses",
+      accountType: "EXPENSE",
+    },
+  ];
+
+  for (const account of accounts) {
+    await prisma.ledgerAccount.upsert({
+      where: {
+        firmId_code: {
+          firmId: firm.id,
+          code: account.code,
+        },
+      },
+      update: {
+        name: account.name,
+        accountType: account.accountType as any,
+        active: true,
+      },
+      create: {
+        firmId: firm.id,
+        code: account.code,
+        name: account.name,
+        accountType: account.accountType as any,
+        active: true,
+      },
+    });
+  }
+
+  console.log("Default FirmLedger accounts created successfully.");
+}
+
+main()
+  .catch((error) => {
+    console.error(error);
+    process.exit(1);
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
+  });
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\src\app\actions.ts
+============================================================
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+import { prisma } from "@/lib/prisma";
+import { audit } from "@/lib/audit";
+import { requireRole } from "@/lib/permissions";
+import {
+  postInvoice,
+  postPayment,
+  postExpense,
+  postPurchaseInvoice,
+  postSupplierPayment,
+} from "@/lib/posting";
+
+const money = (value: string) => {
+  const n = Number(value);
+
+  if (!Number.isFinite(n) || n < 0) {
+    throw new Error("Invalid amount.");
+  }
+
+  return Math.round(n * 100) / 100;
+};
+
+export async function createClient(formData: FormData) {
+  const user = await requireRole([
+    "OWNER",
+    "ADMIN",
+    "FINANCE",
+    "LAWYER",
+    "STAFF",
+  ]);
+
+  const displayName = String(
+    formData.get("displayName") || "",
+  ).trim();
+
+  if (!displayName) {
+    throw new Error("Client name is required.");
+  }
+
+  const count = await prisma.client.count({
+    where: { firmId: user.firmId },
+  });
+
+  const clientCode = `CL-${String(count + 1).padStart(4, "0")}`;
+
+  const client = await prisma.client.create({
+    data: {
+      firmId: user.firmId,
+      clientCode,
+      displayName,
+      email:
+        String(formData.get("email") || "").trim() || null,
+      phone:
+        String(formData.get("phone") || "").trim() || null,
+      type: String(
+        formData.get("type") || "INDIVIDUAL",
+      ) as any,
+    },
+  });
+
+  await audit({
+    firmId: user.firmId,
+    userId: user.id,
+    action: "CREATE",
+    entity: "Client",
+    entityId: client.id,
+  });
+
+  revalidatePath("/clients");
+  redirect("/clients");
+}
+
+export async function createMatter(formData: FormData) {
+  const user = await requireRole([
+    "OWNER",
+    "ADMIN",
+    "FINANCE",
+    "LAWYER",
+    "STAFF",
+  ]);
+
+  const clientId = String(
+    formData.get("clientId") || "",
+  );
+
+  const title = String(
+    formData.get("title") || "",
+  ).trim();
+
+  if (!clientId || !title) {
+    throw new Error(
+      "Client and matter title are required.",
+    );
+  }
+
+  const client = await prisma.client.findFirst({
+    where: {
+      id: clientId,
+      firmId: user.firmId,
+    },
+  });
+
+  if (!client) {
+    throw new Error("Client not found.");
+  }
+
+  

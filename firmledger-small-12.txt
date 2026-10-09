@@ -1,0 +1,197 @@
+﻿  .action-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .content {
+    padding: 20px;
+  }
+
+  .topbar {
+    padding: 0 20px;
+  }
+}
+
+@media (max-width: 520px) {
+  .auth-page {
+    padding: 20px 14px;
+  }
+
+  .auth-card {
+    padding: 30px 24px;
+    border-radius: 14px;
+  }
+
+  .auth-card h1 {
+    font-size: 26px;
+  }
+}
+
+/* Banking form alignment */
+
+.form-card {
+  width: 100%;
+  max-width: 900px;
+  margin-left: 0;
+  margin-right: auto;
+}
+
+.form-card form {
+  width: 100%;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 22px 24px;
+  width: 100%;
+}
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.form-field label {
+  display: block;
+  margin: 0;
+  font-weight: 600;
+}
+
+.form-field input,
+.form-field select {
+  width: 100%;
+  min-height: 44px;
+  box-sizing: border-box;
+}
+
+.field-help {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+.form-notice {
+  margin-top: 28px;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.form-notice strong {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.form-notice p {
+  margin: 0;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.form-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 28px;
+}
+
+@media (max-width: 760px) {
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .form-card {
+    max-width: 100%;
+  }
+
+  .form-actions {
+    justify-content: stretch;
+  }
+
+  .form-actions a,
+  .form-actions button {
+    flex: 1;
+  }
+}
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\src\app\layout.tsx
+============================================================
+import "./globals.css";
+export const metadata={title:"FirmLedger",description:"Financial management for modern law firms"};
+export default function RootLayout({children}:{children:React.ReactNode}){return <html lang="en-ZA"><body>{children}</body></html>}
+
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\src\app\logout-button.tsx
+============================================================
+"use client";
+
+export default function LogoutButton() {
+  async function logout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    window.location.href = "/login";
+  }
+  return <button className="logout-button" onClick={logout}>Sign out</button>;
+}
+
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\src\app\page.tsx
+============================================================
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import { prisma } from "@/lib/prisma";
+import { requireUser } from "@/lib/permissions";
+import LogoutButton from "@/app/logout-button";
+
+const nav=[['Overview','/'],['Clients','/clients'],['Matters','/matters'],['Billing','/billing'],['Payments','/payments'],['Expenses','/expenses'],['Banking','/banking'],['Accounting','/accounting'],['Reports','/reports'],['Audit Trail','/audit'],['Suppliers','/suppliers'],['Purchase invoices','/purchases'],['Trust accounting','/trust'],['VAT / Tax','/tax'],['Financial periods','/periods'],['Recurring billing','/recurring'],['Credit notes','/credit-notes']];
+export default async function Home(){
+  const user=await requireUser();
+  const [invoiceAgg, paidAgg, expenseAgg, outstanding] = await Promise.all([
+    prisma.invoice.aggregate({where:{firmId:user.firmId,status:{not:"VOID"}},_sum:{total:true}}),
+    prisma.payment.aggregate({where:{firmId:user.firmId,status:"COMPLETED"},_sum:{amount:true}}),
+    prisma.expense.aggregate({where:{firmId:user.firmId},_sum:{amount:true}}),
+    prisma.invoice.aggregate({where:{firmId:user.firmId,status:{in:["SENT","PARTIALLY_PAID","OVERDUE"]}},_sum:{balanceDue:true}})
+  ]);
+  const money=(n:unknown)=>`R${Number(n??0).toFixed(2)}`;
+  return <div className="shell"><aside className="sidebar"><div className="brand">Firm<span>Ledger</span></div>{nav.map(([label,href])=><Link className={`nav-link ${href==='/'?'active':''}`} key={href} href={href}>{label}</Link>)}<div className="nav-section">Administration</div><Link className="nav-link" href="/settings">Settings</Link></aside><main className="main"><header className="topbar"><strong>{user.firm.name}</strong><div style={{display:"flex",alignItems:"center",gap:14}}><span className="metric-label">{user.name} Â· {user.role}</span><LogoutButton/></div></header><section className="content"><h1 className="page-title">Good morning</h1><p className="page-subtitle">A simple financial view of your firm.</p><div className="grid grid-4" style={{marginTop:26}}><Metric label="Revenue / billed" value={money(invoiceAgg._sum.total)}/><Metric label="Outstanding invoices" value={money(outstanding._sum.balanceDue)}/><Metric label="Payments received" value={money(paidAgg._sum.amount)}/><Metric label="Expenses" value={money(expenseAgg._sum.amount)}/></div><div className="card" style={{marginTop:22}}><div className="section-title">Quick actions</div><div className="action-grid"><Action href="/billing/new" title="New invoice" text="Create an invoice for a client or matter."/><Action href="/expenses/new" title="Record expense" text="Capture a firm expense or disbursement."/><Action href="/payments/new" title="Record payment" text="Record money received from a client."/><Action href="/banking/reconciliation" title="Reconcile bank" text="Match bank activity to transactions."/></div></div><div className="grid grid-2" style={{marginTop:22}}><div className="card"><div className="section-title">FirmLedger workflow</div><p className="page-subtitle">Clients â†’ Matters â†’ Billing â†’ Payments â†’ Bank reconciliation â†’ Accountant review â†’ Month-end close â†’ Reports.</p></div><div className="card"><div className="section-title">Current user</div><p className="page-subtitle">You are signed in as <strong>{user.role}</strong>. Permissions will control each financial action as the platform grows.</p></div></div></section></main></div>
+}
+function Metric({label,value}:{label:string;value:string}){return <div className="card"><div className="metric-label">{label}</div><div className="metric-value">{value}</div></div>}
+function Action({href,title,text}:{href:string,title:string,text:string}){return <Link className="action" href={href}><strong>{title}</strong><div className="metric-label" style={{marginTop:7}}>{text}</div></Link>}
+
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\src\app\accounting\page.tsx
+============================================================
+import Link from "next/link";
+import { requireRole } from "@/lib/permissions";
+import { prisma } from "@/lib/prisma";
+import { reviewItem } from "@/app/actions";
+
+export default async function AccountingPage() {
+  const user = await requireRole(["OWNER", "ADMIN", "FINANCE", "ACCOUNTANT"]);
+  const [entries, reviews] = await Promise.all([
+    prisma.journalEntry.findMany({ where: { firmId: user.firmId }, include: { lines: { include: { ledgerAccount: true } } }, orderBy: { entryDate: "desc" }, take: 30 }),
+    prisma.accountantReview.findMany({ where: { firmId: user.firmId, status: "PENDING" }, orderBy: { createdAt: "desc" }, take: 20 })
+  ]);
+  return <div className="shell"><aside className="sidebar"><div className="brand">Firm<span>Ledger</span></div><Link className="nav-link" href="/">â† Dashboard</Link><Link className="nav-link active" href="/accounting">Accounting</Link><Link className="nav-link" href="/banking">Banking</Link><Link className="nav-link" href="/reports">Reports</Link></aside><main className="main"><header className="topbar"><strong>Accounting workspace</strong></header><section className="content"><h1 className="page-title">Accounting</h1><p className="page-subtitle">Double-entry journal activity and items awaiting accountant review.</p><div className="grid grid-2" style={{marginTop:24}}><div className="card"><div className="section-title">Pending review</div>{reviews.length?reviews.map(r=><div key={r.id} style={{padding:"10px 0",borderBottom:"1px solid var(--border)"}}><strong>{r.title}</strong><div className="metric-label">{r.notes||"No notes"}</div><form action={reviewItem} style={{display:"flex",gap:8,marginTop:8}}><input type="hidden" name="reviewId" value={r.id}/><button className="primary-button" name="status" value="REVIEWED" type="submit">Approve</button><button className="logout-button" name="status" value="FLAGGED" type="submit">Flag</button></form></div>):<p className="page-subtitle">Nothing is waiting for review.</p>}</div><div className="card"><div className="section-title">Posting rules</div><p className="page-subtitle">Invoices: Dr Accounts Receivable, Cr Legal Fees and VAT Control.</p><p className="page-subtitle">Client receipts: Dr Bank, Cr Accounts Receivable.</p><p className="page-subtitle">Every system-generated journal is balanced before it is saved.</p></div></div><div className="card" style={{marginTop:24}}><div className="section-title">Recent journal entries</div><table className="table"><thead><tr><th>Date</th><th>Description</th><th>Source</th><th>Debit</th><th>Credit</th></tr></thead><tbody>{entries.map(e=>{const debit=e.lines.reduce((s,l)=>s+Number(l.debit),0);const credit=e.lines.reduce((s,l)=>s+Number(l.credit),0);return <tr key={e.id}><td>{e.entryDate.toLocaleDateString("en-ZA")}</td><td>{e.description}</td><td>{e.sourceType||"â€”"}</td><td>R{debit.toFixed(2)}</td><td>R{credit.toFixed(2)}</td></tr>})}</tbody></table></div></section></main></div>
+}
+
+
+
+============================================================
+FILE: C:\Users\khoda\OneDrive\Desktop\firmledger\src\app\api\auth\login\route.ts
+============================================================
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import {
+  makeSession,
+  ve
